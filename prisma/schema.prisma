@@ -1,0 +1,253 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+
+//////////////////////////////////////////////////
+// ENUMS
+//////////////////////////////////////////////////
+
+enum OrderStatus {
+  PENDING
+  DELIVERED
+  RECEIVED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+enum PaymentMethod {
+  CARD
+  MOBILE_BANKING
+  CASH_ON_DELIVERY
+}
+
+enum OtpType{
+  PAYMENT
+  AUTHENTICATION
+}
+
+//////////////////////////////////////////////////
+// USER
+//////////////////////////////////////////////////
+
+model User {
+  id          String    @id @default(uuid())
+  email       String    @unique
+  name        String
+  phone       String?
+  password    String
+  createdAt   DateTime  @default(now())
+  isDeleted   Boolean   @default(false)
+
+  orders      Order[]
+  cart        Cart?
+  addresses   Address[]
+  reviews     Review[]
+  otpS      OTP[] 
+
+  @@map("users")
+}
+
+
+model OTP {
+  id String  @id @default(uuid())
+  code      String
+  type      OtpType
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, type])
+
+}
+
+//////////////////////////////////////////////////
+// ADDRESS
+//////////////////////////////////////////////////
+
+model Address {
+  id          String   @id @default(uuid())
+  userId      String
+  addressLine String
+  city        String
+  country     String
+  postalCode  String
+  isDefault   Boolean  @default(false)
+
+  user        User     @relation(fields: [userId], references: [id])
+  orders      Order[]
+
+  @@map("addresses")
+}
+
+//////////////////////////////////////////////////
+// CATEGORY
+//////////////////////////////////////////////////
+
+model Category {
+  id          String    @id @default(uuid())
+  title       String
+  description String?
+  isActive      Boolean     @default(true)
+
+  products    Product[]
+
+  @@map("categories")
+}
+
+//////////////////////////////////////////////////
+// PRODUCT
+//////////////////////////////////////////////////
+
+model Product {
+  id            String      @id @default(uuid())
+  title         String
+  description   String?
+  price         Decimal
+  stockQuantity Int
+  isActive      Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+
+  categoryId    String
+  category      Category    @relation(fields: [categoryId], references: [id])
+
+  reviews       Review[]
+  cartItems     CartItem[]
+  orderItems    OrderItem[]
+
+  @@map("products")
+  @@index([categoryId])
+  @@index([price])
+  @@index([createdAt])
+  @@index([isActive])
+}
+
+//////////////////////////////////////////////////
+// REVIEW
+//////////////////////////////////////////////////
+
+model Review {
+  id        String   @id @default(uuid())
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+
+  userId    String
+  productId String
+
+  user      User     @relation(fields: [userId], references: [id])
+  product   Product  @relation(fields: [productId], references: [id])
+
+  @@map("reviews")
+}
+
+//////////////////////////////////////////////////
+// CART
+//////////////////////////////////////////////////
+
+model Cart {
+  id        String     @id @default(uuid())
+  userId    String     @unique
+  updatedAt DateTime   @updatedAt
+
+  user      User       @relation(fields: [userId], references: [id])
+  items     CartItem[]
+
+  @@map("carts")
+}
+
+//////////////////////////////////////////////////
+// CART ITEM
+//////////////////////////////////////////////////
+
+model CartItem {
+  id        String   @id @default(uuid())
+  quantity  Int
+
+  cartId    String
+  productId String
+
+  cart      Cart     @relation(fields: [cartId], references: [id])
+  product   Product  @relation(fields: [productId], references: [id])
+
+  @@unique([cartId, productId])
+  @@map("cart_items")
+}
+
+//////////////////////////////////////////////////
+// ORDER
+//////////////////////////////////////////////////
+
+model Order {
+  id          String       @id @default(uuid())
+  totalCost   Decimal
+  status      OrderStatus  @default(PENDING)
+  createdAt   DateTime     @default(now())
+
+  userId      String
+  addressId   String
+
+  user        User         @relation(fields: [userId], references: [id])
+  address     Address      @relation(fields: [addressId], references: [id])
+
+  items       OrderItem[]
+  payment     Payment?
+
+  @@map("orders")
+}
+
+//////////////////////////////////////////////////
+// ORDER ITEM
+//////////////////////////////////////////////////
+
+model OrderItem {
+  id        String   @id @default(uuid())
+  price     Decimal
+  quantity  Int
+
+  orderId   String
+  productId String
+
+  order     Order    @relation(fields: [orderId], references: [id])
+  product   Product  @relation(fields: [productId], references: [id])
+
+  @@map("order_items")
+}
+
+//////////////////////////////////////////////////
+// PAYMENT
+//////////////////////////////////////////////////
+
+model Payment {
+  id             String         @id @default(uuid())
+  paymentMethod  PaymentMethod
+  paymentStatus  PaymentStatus  @default(PENDING)
+  transactionId  String?
+  paidAt         DateTime?
+
+  orderId        String         @unique
+  order          Order          @relation(fields: [orderId], references: [id])
+
+  @@map("payments")
+}
+
+
+
