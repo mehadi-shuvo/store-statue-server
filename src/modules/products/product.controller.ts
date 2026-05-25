@@ -68,10 +68,20 @@ const getSingleProduct = catchAsync(async (req, res) => {
   });
 });
 
+export const bulkUploadProductsController = catchAsync(async (req, res) => {
+  const result = await productServices.bulkUploadProducts(req.body.products);
+
+  res.status(201).json({
+    success: true,
+    ...result,
+  });
+});
+
 export const productControllers = {
   addProduct,
   updateProduct,
   deleteProduct,
   getProducts,
   getSingleProduct,
+  bulkUploadProductsController,
 };

@@ -8,5 +8,5 @@ router.patch("/:id", productControllers.updateProduct);
 router.delete("/:id", productControllers.deleteProduct);
 router.get("/", productControllers.getProducts);
 router.get("/:id", productControllers.getSingleProduct);
-
+router.post("/multiple", productControllers.bulkUploadProductsController);
 export const productRouter = router;

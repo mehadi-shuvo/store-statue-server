@@ -1,0 +1,26 @@
+//////////////////////////////////////////////////
+// ENUMS
+//////////////////////////////////////////////////
+
+enum OrderStatus {
+  PENDING
+  DELIVERED
+  RECEIVED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+enum PaymentMethod {
+  CARD
+  MOBILE_BANKING
+  CASH_ON_DELIVERY
+}
+
+enum OtpType{
+  PAYMENT
+  AUTHENTICATION
+}

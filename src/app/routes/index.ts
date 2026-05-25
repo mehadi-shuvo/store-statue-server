@@ -14,7 +14,7 @@ const moduleRoutes: TModuleRoute[] = [
     route: userRouter,
   },
   {
-    path: "/product",
+    path: "/products",
     route: productRouter,
   },
   {

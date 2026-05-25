@@ -56,26 +56,19 @@ const createUser = async (payload: CreateUserPayload) => {
 };
 
 const loginUser = async (email: string, password: string) => {
-  const user = await prismaC.user.findUnique({
-    where: { email },
-  });
-
+  const user = await prismaC.user.findUnique({ where: { email } });
   if (!user) {
     throw new ApiAppError(401, "Invalid email or password");
   }
-
   const isPasswordMatched = await bcrypt.compare(password, user.password);
-
   if (!isPasswordMatched) {
     throw new ApiAppError(401, "Invalid email or password");
   }
-
   const token = jwt.sign(
     { userId: user.id, email: user.email },
     ENV.JWT_SECRET,
-    { expiresIn: "3d", algorithm: "HS256" }
+    { expiresIn: "3d", algorithm: "HS256" },
   );
-
   return {
     accessToken: token,
     user: {
@@ -86,7 +79,6 @@ const loginUser = async (email: string, password: string) => {
     },
   };
 };
-
 const forgotPassword = async (email: string) => {
   const user = await prismaC.user.findUnique({
     where: { email },
@@ -111,7 +103,7 @@ const forgotPassword = async (email: string) => {
   await sendEmail(
     email,
     "Password Reset OTP",
-    `Your password reset OTP is ${otp}. It will expire in 5 minutes.`
+    `Your password reset OTP is ${otp}. It will expire in 5 minutes.`,
   );
 
   return { message: "OTP sent to your email" };
@@ -120,7 +112,7 @@ const forgotPassword = async (email: string) => {
 const verifyOtp = async (
   userId: string,
   otpCode: string,
-  type: "AUTHENTICATION"
+  type: "AUTHENTICATION",
 ) => {
   const otp = await prismaC.oTP.findFirst({
     where: {

@@ -199,6 +199,7 @@ const getCart = async (userId: string) => {
   if (!cart) {
     throw new ApiAppError(404, "Cart not found");
   }
+  // console.log({ cart });
 
   return cart;
 };

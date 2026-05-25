@@ -14,32 +14,6 @@ datasource db {
 }
 
 
-//////////////////////////////////////////////////
-// ENUMS
-//////////////////////////////////////////////////
-
-enum OrderStatus {
-  PENDING
-  DELIVERED
-  RECEIVED
-}
-
-enum PaymentStatus {
-  PENDING
-  PAID
-  FAILED
-}
-
-enum PaymentMethod {
-  CARD
-  MOBILE_BANKING
-  CASH_ON_DELIVERY
-}
-
-enum OtpType{
-  PAYMENT
-  AUTHENTICATION
-}
 
 //////////////////////////////////////////////////
 // USER
@@ -119,10 +93,22 @@ model Category {
 
 model Product {
   id            String      @id @default(uuid())
+
   title         String
   description   String?
+
   price         Decimal
   stockQuantity Int
+
+  // ✅ Discount Offer
+  offerPercent  Int?        @default(0)
+
+  // ✅ Product Images (Multiple)
+  photos        String[]    @default([])
+
+  // ✅ Key Features
+  features      String[]    @default([])
+
   isActive      Boolean     @default(true)
   createdAt     DateTime    @default(now())
 
@@ -134,11 +120,13 @@ model Product {
   orderItems    OrderItem[]
 
   @@map("products")
+
   @@index([categoryId])
   @@index([price])
   @@index([createdAt])
   @@index([isActive])
 }
+
 
 //////////////////////////////////////////////////
 // REVIEW
