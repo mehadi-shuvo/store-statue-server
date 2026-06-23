@@ -361,7 +361,9 @@ const bulkUploadProducts = async (products: BulkUploadProductPayload[]) => {
     select: { id: true },
   });
 
-  const validCategorySet = new Set(validCategories.map((c) => c.id));
+  const validCategorySet = new Set(
+    validCategories.map((category: { id: string }) => category.id),
+  );
 
   // ❌ Check invalid categories
   const invalidCategories = categoryIds.filter(

@@ -237,7 +237,7 @@ const bulkUploadProducts = async (products) => {
         },
         select: { id: true },
     });
-    const validCategorySet = new Set(validCategories.map((c) => c.id));
+    const validCategorySet = new Set(validCategories.map((category) => category.id));
     // ❌ Check invalid categories
     const invalidCategories = categoryIds.filter((id) => !validCategorySet.has(id));
     if (invalidCategories.length > 0) {
