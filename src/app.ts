@@ -3,13 +3,34 @@ import cors from "cors";
 import router from "./app/routes";
 
 import cookieParser from "cookie-parser";
+import { ENV } from "./utils/env-config";
 
 const app: Express = express();
+
+const normalizeOrigin = (origin: string) => origin.replace(/\/+$/, "");
+
+const allowedOrigins = [
+  ENV.CLIENT_URL,
+  "https://store-statue-client.vercel.app",
+  "http://localhost:3000",
+].filter(Boolean).map(normalizeOrigin);
 
 app.use(express.json());
 app.use(
   cors({
-    origin: "https://store-statue-client.vercel.app/",
+    origin: (origin, callback) => {
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      const normalizedOrigin = normalizeOrigin(origin);
+
+      if (allowedOrigins.includes(normalizedOrigin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error(`Origin ${origin} is not allowed by CORS`));
+    },
     credentials: true,
   }),
 );
