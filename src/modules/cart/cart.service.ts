@@ -185,36 +185,14 @@ const removeFromCart = async (payload: {
  * Get Cart Details
  */
 const getCart = async (userId: string) => {
-  const cart = await prismaC.cart.findUnique({
-    where: { userId },
-    include: {
-      items: {
-        include: {
-          product: true,
-        },
-      },
-    },
-  });
-
-  if (!cart) {
-    throw new ApiAppError(404, "Cart not found");
-  }
-  // console.log({ cart });
-
-  return cart;
+  return getOrCreateCart(userId);
 };
 
 /**
  * Clear Cart
  */
 const clearCart = async (userId: string) => {
-  const cart = await prismaC.cart.findUnique({
-    where: { userId },
-  });
-
-  if (!cart) {
-    throw new ApiAppError(404, "Cart not found");
-  }
+  const cart = await getOrCreateCart(userId);
 
   await prismaC.cartItem.deleteMany({
     where: { cartId: cart.id },

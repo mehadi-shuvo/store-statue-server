@@ -227,8 +227,6 @@ const getProducts = async (query: GetProductsQuery) => {
     where.stockQuantity = { gt: 0 };
   }
 
-  console.log("FINAL WHERE:", JSON.stringify(where, null, 2));
-
   const [products, total] = await prismaC.$transaction([
     prismaC.product.findMany({
       where,

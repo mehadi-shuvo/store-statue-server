@@ -64,6 +64,14 @@ const loginUser = async (email: string, password: string) => {
   if (!isPasswordMatched) {
     throw new ApiAppError(401, "Invalid email or password");
   }
+
+  if (!ENV.JWT_SECRET) {
+    throw new ApiAppError(
+      500,
+      "JWT secret is not configured. Set JWT_SECRET or JWT_ACCESS_SECRET in .env",
+    );
+  }
+
   const token = jwt.sign(
     { userId: user.id, email: user.email },
     ENV.JWT_SECRET,

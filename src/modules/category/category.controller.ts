@@ -15,6 +15,35 @@ const addCategory = catchAsync(async (req, res) => {
 });
 
 /**
+ * Bulk Add Categories
+ */
+const bulkAddCategories = catchAsync(async (req, res) => {
+  const result = await categoryServices.bulkAddCategories(req.body);
+
+  res.status(201).json({
+    success: true,
+    message: result.message,
+    data: result.data,
+    meta: {
+      count: result.count,
+    },
+  });
+});
+
+/**
+ * Get All Categories
+ */
+const getCategories = catchAsync(async (req, res) => {
+  const result = await categoryServices.getCategories(req.query);
+
+  res.status(200).json({
+    success: true,
+    message: "Categories fetched successfully",
+    data: result,
+  });
+});
+
+/**
  * Update Category
  */
 const updateCategory = catchAsync(async (req, res) => {
@@ -44,6 +73,8 @@ const deleteCategory = catchAsync(async (req, res) => {
 
 export const categoryControllers = {
   addCategory,
+  bulkAddCategories,
+  getCategories,
   updateCategory,
   deleteCategory,
 };
