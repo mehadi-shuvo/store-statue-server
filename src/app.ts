@@ -4,6 +4,7 @@ import router from "./app/routes";
 
 import cookieParser from "cookie-parser";
 import { ENV } from "./utils/env-config";
+import { globalErrorHandler } from "./middlewares/globalErrorHandler";
 
 const app: Express = express();
 
@@ -41,5 +42,7 @@ app.use("/api", router);
 app.get("/", (req: Request, res: Response) => {
   res.send(`game express server is running ...`);
 });
+
+app.use(globalErrorHandler);
 
 export default app;
