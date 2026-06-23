@@ -76,16 +76,18 @@ const bulkAddCategories = async (payload: BulkCategoryPayload) => {
   });
 
   if (existingCategories.length > 0) {
+    const existingCategoryTitles = existingCategories.map(
+      (category: { title: string }) => category.title,
+    );
+
     throw new ApiAppError(
       409,
-      `Category already exists: ${existingCategories
-        .map((category) => category.title)
-        .join(", ")}`,
+      `Category already exists: ${existingCategoryTitles.join(", ")}`,
     );
   }
 
   const createdCategories = await prismaC.$transaction(
-    categories.map((category, index) =>
+    categories.map((category: CategoryPayload, index: number) =>
       prismaC.category.create({
         data: {
           title: normalizedTitles[index],
