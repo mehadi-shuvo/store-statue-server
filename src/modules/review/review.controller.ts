@@ -1,11 +1,21 @@
+import type { Request } from "express";
 import catchAsync from "../../utils/catchAsync";
+import { ApiAppError } from "../../utils/apiAppError";
 import { reviewServices } from "./review.service";
 
+const getAuthenticatedUserId = (req: Request) => {
+  if (!req.authUser?.id) {
+    throw new ApiAppError(401, "Authentication token is required");
+  }
+
+  return req.authUser.id;
+};
+
 const createReview = catchAsync(async (req, res) => {
-  const { userId, productId, rating, comment } = req.body;
+  const { productId, rating, comment } = req.body;
 
   const result = await reviewServices.createReview({
-    userId,
+    userId: getAuthenticatedUserId(req),
     productId,
     rating,
     comment,
@@ -20,9 +30,13 @@ const createReview = catchAsync(async (req, res) => {
 
 const updateReview = catchAsync(async (req, res) => {
   const { id } = req.params;
-  const { userId, payload } = req.body;
+  const { payload } = req.body;
 
-  const result = await reviewServices.updateReview(id, userId, payload);
+  const result = await reviewServices.updateReview(
+    id,
+    getAuthenticatedUserId(req),
+    payload,
+  );
 
   res.status(200).json({
     success: true,
@@ -32,10 +46,9 @@ const updateReview = catchAsync(async (req, res) => {
 });
 
 const deleteReview = catchAsync(async (req, res) => {
-  const { userId } = req.body;
   const { id } = req.params;
 
-  const result = await reviewServices.deleteReview(id, userId);
+  const result = await reviewServices.deleteReview(id, getAuthenticatedUserId(req));
 
   res.status(200).json({
     success: true,

@@ -1,40 +1,101 @@
 import catchAsync from "../../utils/catchAsync";
+import { ENV } from "../../utils/env-config";
 import { userService } from "./user.service";
+import {
+  createCustomerSchema,
+  deleteCustomerProfileSchema,
+  loginSchema,
+  parseRequestBody,
+  updateCustomerProfileSchema,
+} from "./user.validation";
+
+const ACCESS_TOKEN_COOKIE_MAX_AGE = 24 * 60 * 60 * 1000;
+const isProduction = ENV.NODE_ENV === "production";
+const sameSite = isProduction ? "none" : "lax";
+
+const accessTokenCookieOptions = {
+  httpOnly: true,
+  secure: isProduction,
+  sameSite,
+  maxAge: ACCESS_TOKEN_COOKIE_MAX_AGE,
+  path: "/",
+} as const;
+
+const legacyUserInfoCookieOptions = {
+  secure: isProduction,
+  sameSite,
+  path: "/",
+} as const;
 
 const createUser = catchAsync(async (req, res) => {
-  const { email, name, phone, password } = req.body;
+  const payload = parseRequestBody(createCustomerSchema, req.body);
 
-  const user = await userService.createUser({ email, name, phone, password });
+  const user = await userService.createUser(payload);
   res.status(201).json({
     success: true,
-    message: "successfully created user",
+    message: "Account created successfully",
     data: user,
   });
 });
 
 const login = catchAsync(async (req, res) => {
-  const { email, password } = req.body;
+  const payload = parseRequestBody(loginSchema, req.body);
 
-  const result = await userService.loginUser(email, password);
+  const result = await userService.loginUser(payload);
 
-  res.cookie("accessToken", result.accessToken, {
-    httpOnly: true,
-    secure: false,
-    sameSite: "strict",
-    maxAge: 3 * 24 * 60 * 60 * 1000,
-  });
-
-  res.cookie("userInfo", JSON.stringify(result.user), {
-    httpOnly: false,
-    secure: false, // process.env.NODE_ENV === "production",
-    sameSite: "strict",
-    maxAge: 3 * 24 * 60 * 60 * 1000,
-  });
+  res.cookie("accessToken", result.accessToken, accessTokenCookieOptions);
+  res.clearCookie("userInfo", legacyUserInfoCookieOptions);
 
   res.status(200).json({
     success: true,
     message: "Login successful",
-    data: result,
+    data: {
+      user: result.user,
+    },
+  });
+});
+
+const logout = catchAsync(async (req, res) => {
+  res.clearCookie("accessToken", accessTokenCookieOptions);
+  res.clearCookie("userInfo", legacyUserInfoCookieOptions);
+
+  res.status(200).json({
+    success: true,
+    message: "Logout successful",
+  });
+});
+
+const getCustomerProfile = catchAsync(async (req, res) => {
+  const profile = await userService.getCustomerProfile(req.authUser!.id);
+
+  res.status(200).json({
+    success: true,
+    message: "Customer profile retrieved successfully",
+    data: profile,
+  });
+});
+
+const updateCustomerProfile = catchAsync(async (req, res) => {
+  const payload = parseRequestBody(updateCustomerProfileSchema, req.body);
+  const profile = await userService.updateCustomerProfile(req.authUser!.id, payload);
+
+  res.status(200).json({
+    success: true,
+    message: "Customer profile updated successfully",
+    data: profile,
+  });
+});
+
+const deleteCustomerProfile = catchAsync(async (req, res) => {
+  const payload = parseRequestBody(deleteCustomerProfileSchema, req.body);
+
+  await userService.deleteCustomerProfile(req.authUser!.id, payload);
+  res.clearCookie("accessToken", accessTokenCookieOptions);
+  res.clearCookie("userInfo", legacyUserInfoCookieOptions);
+
+  res.status(200).json({
+    success: true,
+    message: "Customer profile deleted successfully",
   });
 });
 
@@ -62,6 +123,10 @@ const getUsers = catchAsync(async (req, res) => {
 export const userController = {
   createUser,
   login,
+  logout,
+  getCustomerProfile,
+  updateCustomerProfile,
+  deleteCustomerProfile,
   forgotPassword,
   getUsers,
 };

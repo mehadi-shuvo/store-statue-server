@@ -2,11 +2,12 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.categoryRouter = void 0;
 const express_1 = require("express");
+const auth_middleware_1 = require("../../middlewares/auth.middleware");
 const category_controller_1 = require("./category.controller");
 const router = (0, express_1.Router)();
-router.get("/", category_controller_1.categoryControllers.getCategories);
-router.post("/", category_controller_1.categoryControllers.addCategory);
-router.post("/bulk", category_controller_1.categoryControllers.bulkAddCategories);
-router.patch("/:id", category_controller_1.categoryControllers.updateCategory);
-router.delete("/:id", category_controller_1.categoryControllers.deleteCategory);
+router.get("/", auth_middleware_1.optionalAuthenticateUser, category_controller_1.categoryControllers.getCategories);
+router.post("/", auth_middleware_1.authenticateUser, auth_middleware_1.requireAdmin, category_controller_1.categoryControllers.addCategory);
+router.post("/bulk", auth_middleware_1.authenticateUser, auth_middleware_1.requireAdmin, category_controller_1.categoryControllers.bulkAddCategories);
+router.patch("/:id", auth_middleware_1.authenticateUser, auth_middleware_1.requireAdmin, category_controller_1.categoryControllers.updateCategory);
+router.delete("/:id", auth_middleware_1.authenticateUser, auth_middleware_1.requireAdmin, category_controller_1.categoryControllers.deleteCategory);
 exports.categoryRouter = router;

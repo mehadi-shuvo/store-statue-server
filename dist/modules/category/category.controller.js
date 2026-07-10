@@ -4,6 +4,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.categoryControllers = void 0;
+const client_1 = require("../../generated/prisma/client");
+const apiAppError_1 = require("../../utils/apiAppError");
 const catchAsync_1 = __importDefault(require("../../utils/catchAsync"));
 const category_service_1 = require("./category.service");
 /**
@@ -35,6 +37,12 @@ const bulkAddCategories = (0, catchAsync_1.default)(async (req, res) => {
  * Get All Categories
  */
 const getCategories = (0, catchAsync_1.default)(async (req, res) => {
+    const wantsInactive = req.query.includeInactive === "true";
+    const isAdmin = req.authUser?.role === client_1.UserRole.ADMIN ||
+        req.authUser?.role === client_1.UserRole.SUPER_ADMIN;
+    if (wantsInactive && !isAdmin) {
+        throw new apiAppError_1.ApiAppError(403, "Only admins can view inactive categories");
+    }
     const result = await category_service_1.categoryServices.getCategories(req.query);
     res.status(200).json({
         success: true,

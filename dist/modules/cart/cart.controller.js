@@ -5,9 +5,19 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.cartControllers = void 0;
 const catchAsync_1 = __importDefault(require("../../utils/catchAsync"));
+const apiAppError_1 = require("../../utils/apiAppError");
 const cart_service_1 = require("./cart.service");
+const getAuthenticatedUserId = (req) => {
+    if (!req.authUser?.id) {
+        throw new apiAppError_1.ApiAppError(401, "Authentication token is required");
+    }
+    return req.authUser.id;
+};
 const addToCart = (0, catchAsync_1.default)(async (req, res) => {
-    const result = await cart_service_1.cartServices.addToCart(req.body);
+    const result = await cart_service_1.cartServices.addToCart({
+        ...req.body,
+        userId: getAuthenticatedUserId(req),
+    });
     res.status(200).json({
         success: true,
         message: "Product added to cart",
@@ -15,7 +25,10 @@ const addToCart = (0, catchAsync_1.default)(async (req, res) => {
     });
 });
 const updateCartItem = (0, catchAsync_1.default)(async (req, res) => {
-    const result = await cart_service_1.cartServices.updateCartItem(req.body);
+    const result = await cart_service_1.cartServices.updateCartItem({
+        ...req.body,
+        userId: getAuthenticatedUserId(req),
+    });
     res.status(200).json({
         success: true,
         message: "Cart item updated",
@@ -23,7 +36,10 @@ const updateCartItem = (0, catchAsync_1.default)(async (req, res) => {
     });
 });
 const removeFromCart = (0, catchAsync_1.default)(async (req, res) => {
-    const result = await cart_service_1.cartServices.removeFromCart(req.body);
+    const result = await cart_service_1.cartServices.removeFromCart({
+        ...req.body,
+        userId: getAuthenticatedUserId(req),
+    });
     res.status(200).json({
         success: true,
         message: "Item removed from cart",
@@ -31,8 +47,7 @@ const removeFromCart = (0, catchAsync_1.default)(async (req, res) => {
     });
 });
 const getCart = (0, catchAsync_1.default)(async (req, res) => {
-    const { userId } = req.params;
-    const result = await cart_service_1.cartServices.getCart(userId);
+    const result = await cart_service_1.cartServices.getCart(getAuthenticatedUserId(req));
     res.status(200).json({
         success: true,
         message: "Cart fetched successfully",
@@ -40,8 +55,7 @@ const getCart = (0, catchAsync_1.default)(async (req, res) => {
     });
 });
 const clearCart = (0, catchAsync_1.default)(async (req, res) => {
-    const { userId } = req.params;
-    const result = await cart_service_1.cartServices.clearCart(userId);
+    const result = await cart_service_1.cartServices.clearCart(getAuthenticatedUserId(req));
     res.status(200).json({
         success: true,
         message: "Cart cleared successfully",

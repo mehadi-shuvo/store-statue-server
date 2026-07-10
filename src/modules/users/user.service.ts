@@ -5,15 +5,50 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { sendEmail } from "../../utils/sendEmail";
 import { generateOtp } from "../../utils/generateOTP";
+import { UserRole } from "../../generated/prisma/client";
+import type {
+  CreateCustomerPayload,
+  DeleteCustomerProfilePayload,
+  LoginPayload,
+  UpdateCustomerProfilePayload,
+} from "./user.validation";
 
-type CreateUserPayload = {
-  email: string;
-  name: string;
-  phone?: string;
-  password: string;
+const DUMMY_PASSWORD_HASH =
+  "$2b$12$h6TRZPS.vxvidI7C2qHZeuVMUVEk0jEGbV4i.LPDQzazE9a.5XFV.";
+
+const userProfileSelect = {
+  id: true,
+  email: true,
+  name: true,
+  phone: true,
+  role: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
+const isPrismaKnownError = (error: unknown, code: string) =>
+  typeof error === "object" &&
+  error !== null &&
+  "code" in error &&
+  (error as { code?: string }).code === code;
+
+const getActiveCustomerById = async (userId: string) => {
+  const user = await prismaC.user.findFirst({
+    where: {
+      id: userId,
+      role: UserRole.CUSTOMER,
+      isDeleted: false,
+    },
+  });
+
+  if (!user) {
+    throw new ApiAppError(404, "Customer profile not found");
+  }
+
+  return user;
 };
 
-const createUser = async (payload: CreateUserPayload) => {
+const createUser = async (payload: CreateCustomerPayload) => {
   // 1. Check if user already exists (Business Rule)
   const existingUser = await prismaC.user.findUnique({
     where: { email: payload.email },
@@ -39,27 +74,41 @@ const createUser = async (payload: CreateUserPayload) => {
         name: payload.name,
         phone: payload.phone,
         password: hashedPassword,
+        role: UserRole.CUSTOMER,
       },
       select: {
         id: true,
         email: true,
         name: true,
         phone: true,
+        role: true,
         createdAt: true,
       },
     });
 
     return user;
   } catch (error) {
+    if (isPrismaKnownError(error, "P2002")) {
+      throw new ApiAppError(409, "User with this email already exists");
+    }
+
     throw new ApiAppError(500, "Failed to create user", error);
   }
 };
 
-const loginUser = async (email: string, password: string) => {
-  const user = await prismaC.user.findUnique({ where: { email } });
+const loginUser = async ({ email, password }: LoginPayload) => {
+  const user = await prismaC.user.findFirst({
+    where: {
+      email,
+      isDeleted: false,
+    },
+  });
+
   if (!user) {
+    await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
     throw new ApiAppError(401, "Invalid email or password");
   }
+
   const isPasswordMatched = await bcrypt.compare(password, user.password);
   if (!isPasswordMatched) {
     throw new ApiAppError(401, "Invalid email or password");
@@ -73,10 +122,14 @@ const loginUser = async (email: string, password: string) => {
   }
 
   const token = jwt.sign(
-    { userId: user.id, email: user.email },
+    { userId: user.id, email: user.email, role: user.role },
     ENV.JWT_SECRET,
-    { expiresIn: "3d", algorithm: "HS256" },
+    {
+      expiresIn: ENV.JWT_EXPIRES_IN as jwt.SignOptions["expiresIn"],
+      algorithm: "HS256",
+    },
   );
+
   return {
     accessToken: token,
     user: {
@@ -84,9 +137,66 @@ const loginUser = async (email: string, password: string) => {
       email: user.email,
       name: user.name,
       phone: user.phone,
+      role: user.role,
     },
   };
 };
+
+const getCustomerProfile = async (userId: string) => {
+  await getActiveCustomerById(userId);
+
+  return prismaC.user.findUnique({
+    where: { id: userId },
+    select: userProfileSelect,
+  });
+};
+
+const updateCustomerProfile = async (
+  userId: string,
+  payload: UpdateCustomerProfilePayload,
+) => {
+  await getActiveCustomerById(userId);
+
+  return prismaC.user.update({
+    where: { id: userId },
+    data: {
+      ...(payload.name !== undefined ? { name: payload.name } : {}),
+      ...(payload.phone !== undefined ? { phone: payload.phone } : {}),
+    },
+    select: userProfileSelect,
+  });
+};
+
+const deleteCustomerProfile = async (
+  userId: string,
+  payload: DeleteCustomerProfilePayload,
+) => {
+  const user = await getActiveCustomerById(userId);
+  const isPasswordMatched = await bcrypt.compare(payload.password, user.password);
+
+  if (!isPasswordMatched) {
+    throw new ApiAppError(401, "Invalid password");
+  }
+
+  const anonymizedPassword = await bcrypt.hash(
+    `deleted:${userId}:${Date.now()}`,
+    ENV.BCRYPT_SALT,
+  );
+
+  await prismaC.user.update({
+    where: { id: userId },
+    data: {
+      email: `deleted-${userId}@deleted.local`,
+      name: "Deleted Customer",
+      phone: null,
+      password: anonymizedPassword,
+      isDeleted: true,
+    },
+  });
+
+  return { deleted: true };
+};
+
 const forgotPassword = async (email: string) => {
   const user = await prismaC.user.findUnique({
     where: { email },
@@ -153,6 +263,7 @@ const getUsers = async () => {
       email: true,
       name: true,
       phone: true,
+      role: true,
       createdAt: true,
     },
   });
@@ -161,6 +272,9 @@ const getUsers = async () => {
 export const userService = {
   createUser,
   loginUser,
+  getCustomerProfile,
+  updateCustomerProfile,
+  deleteCustomerProfile,
   forgotPassword,
   verifyOtp,
   getUsers,

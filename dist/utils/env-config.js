@@ -6,6 +6,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ENV = void 0;
 const dotenv_1 = __importDefault(require("dotenv"));
 dotenv_1.default.config();
+const readNumber = (value, fallback) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+};
 exports.ENV = {
     NODE_ENV: process.env.NODE_ENV || "development",
     PORT: process.env.PORT || "5000",
@@ -13,11 +17,11 @@ exports.ENV = {
     CLIENT_URL: process.env.CLIENT_URL || "",
     JWT_SECRET: process.env.JWT_SECRET || process.env.JWT_ACCESS_SECRET || "",
     JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || "24h",
-    BCRYPT_SALT: parseInt(process.env.SALT_ROUNDS),
+    BCRYPT_SALT: readNumber(process.env.SALT_ROUNDS, 12),
     // node mailer
     HOST_MAIL: process.env.HOST,
     MAIL_SERVICE: process.env.SERVICE,
-    EMAIL_PORT: parseInt(process.env.EMAIL_PORT),
+    EMAIL_PORT: readNumber(process.env.EMAIL_PORT, 587),
     SENDER_MAIL_USER: process.env.SENDER_MAIL_USER,
     MAIL_PASS: process.env.MAIL_PASS,
 };

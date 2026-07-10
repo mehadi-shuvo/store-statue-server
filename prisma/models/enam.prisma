@@ -4,23 +4,63 @@
 
 enum OrderStatus {
   PENDING
+  CONFIRMED
+  PROCESSING
+  COMPLETED
   DELIVERED
   RECEIVED
+  CANCELLED
+  REFUNDED
 }
 
 enum PaymentStatus {
   PENDING
+  PROCESSING
   PAID
   FAILED
+  CANCELLED
+  REFUNDED
 }
 
 enum PaymentMethod {
+  BKASH
+  SSL_COMMERZ
   CARD
   MOBILE_BANKING
   CASH_ON_DELIVERY
 }
 
-enum OtpType{
+enum OtpType {
   PAYMENT
   AUTHENTICATION
+}
+
+enum UserRole {
+  CUSTOMER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum ProductType {
+  PHYSICAL
+  GIFT_CARD
+  GAME_TOP_UP
+  SUBSCRIPTION
+}
+
+enum ProductInputType {
+  TEXT
+  NUMBER
+  EMAIL
+  PHONE
+  SELECT
+}
+
+enum DeliveryStatus {
+  NOT_REQUIRED
+  PENDING
+  PROCESSING
+  DELIVERED
+  FAILED
+  REFUNDED
 }

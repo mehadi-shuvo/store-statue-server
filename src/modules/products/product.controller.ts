@@ -5,7 +5,7 @@ import { productServices } from "./product.service";
  * Add Product
  */
 const addProduct = catchAsync(async (req, res) => {
-  const result = await productServices.addProduct(req.body);
+  const result = await productServices.addProduct(req.body, req.authUser?.id);
 
   res.status(201).json({
     success: true,
@@ -19,7 +19,7 @@ const addProduct = catchAsync(async (req, res) => {
  */
 const updateProduct = catchAsync(async (req, res) => {
   const { id } = req.params;
-  const result = await productServices.updateProduct(id, req.body);
+  const result = await productServices.updateProduct(id, req.body, req.authUser?.id);
 
   res.status(200).json({
     success: true,

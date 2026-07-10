@@ -9,18 +9,28 @@
 * 🟢 You can import this file directly.
 */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.OtpType = exports.PaymentMethod = exports.PaymentStatus = exports.OrderStatus = void 0;
+exports.DeliveryStatus = exports.ProductInputType = exports.ProductType = exports.UserRole = exports.OtpType = exports.PaymentMethod = exports.PaymentStatus = exports.OrderStatus = void 0;
 exports.OrderStatus = {
     PENDING: 'PENDING',
+    CONFIRMED: 'CONFIRMED',
+    PROCESSING: 'PROCESSING',
+    COMPLETED: 'COMPLETED',
     DELIVERED: 'DELIVERED',
-    RECEIVED: 'RECEIVED'
+    RECEIVED: 'RECEIVED',
+    CANCELLED: 'CANCELLED',
+    REFUNDED: 'REFUNDED'
 };
 exports.PaymentStatus = {
     PENDING: 'PENDING',
+    PROCESSING: 'PROCESSING',
     PAID: 'PAID',
-    FAILED: 'FAILED'
+    FAILED: 'FAILED',
+    CANCELLED: 'CANCELLED',
+    REFUNDED: 'REFUNDED'
 };
 exports.PaymentMethod = {
+    BKASH: 'BKASH',
+    SSL_COMMERZ: 'SSL_COMMERZ',
     CARD: 'CARD',
     MOBILE_BANKING: 'MOBILE_BANKING',
     CASH_ON_DELIVERY: 'CASH_ON_DELIVERY'
@@ -28,4 +38,30 @@ exports.PaymentMethod = {
 exports.OtpType = {
     PAYMENT: 'PAYMENT',
     AUTHENTICATION: 'AUTHENTICATION'
+};
+exports.UserRole = {
+    CUSTOMER: 'CUSTOMER',
+    ADMIN: 'ADMIN',
+    SUPER_ADMIN: 'SUPER_ADMIN'
+};
+exports.ProductType = {
+    PHYSICAL: 'PHYSICAL',
+    GIFT_CARD: 'GIFT_CARD',
+    GAME_TOP_UP: 'GAME_TOP_UP',
+    SUBSCRIPTION: 'SUBSCRIPTION'
+};
+exports.ProductInputType = {
+    TEXT: 'TEXT',
+    NUMBER: 'NUMBER',
+    EMAIL: 'EMAIL',
+    PHONE: 'PHONE',
+    SELECT: 'SELECT'
+};
+exports.DeliveryStatus = {
+    NOT_REQUIRED: 'NOT_REQUIRED',
+    PENDING: 'PENDING',
+    PROCESSING: 'PROCESSING',
+    DELIVERED: 'DELIVERED',
+    FAILED: 'FAILED',
+    REFUNDED: 'REFUNDED'
 };

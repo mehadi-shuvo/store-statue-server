@@ -13,33 +13,35 @@ datasource db {
   provider = "postgresql"
 }
 
-
-
 //////////////////////////////////////////////////
 // USER
 //////////////////////////////////////////////////
 
 model User {
-  id          String    @id @default(uuid())
-  email       String    @unique
-  name        String
-  phone       String?
-  password    String
-  createdAt   DateTime  @default(now())
-  isDeleted   Boolean   @default(false)
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String
+  phone     String?
+  password  String
+  role      UserRole @default(CUSTOMER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+  isDeleted Boolean  @default(false)
 
-  orders      Order[]
-  cart        Cart?
-  addresses   Address[]
-  reviews     Review[]
-  otpS      OTP[] 
+  orders          Order[]
+  cart            Cart?
+  addresses       Address[]
+  reviews         Review[]
+  otpS            OTP[]
+  createdProducts Product[]  @relation("ProductCreatedBy")
+  updatedProducts Product[]  @relation("ProductUpdatedBy")
+  auditLogs       AuditLog[]
 
   @@map("users")
 }
 
-
 model OTP {
-  id String  @id @default(uuid())
+  id        String   @id @default(uuid())
   code      String
   type      OtpType
   expiresAt DateTime
@@ -50,7 +52,6 @@ model OTP {
   createdAt DateTime @default(now())
 
   @@index([userId, type])
-
 }
 
 //////////////////////////////////////////////////
@@ -58,16 +59,16 @@ model OTP {
 //////////////////////////////////////////////////
 
 model Address {
-  id          String   @id @default(uuid())
+  id          String  @id @default(uuid())
   userId      String
   addressLine String
   city        String
   country     String
   postalCode  String
-  isDefault   Boolean  @default(false)
+  isDefault   Boolean @default(false)
 
-  user        User     @relation(fields: [userId], references: [id])
-  orders      Order[]
+  user   User    @relation(fields: [userId], references: [id])
+  orders Order[]
 
   @@map("addresses")
 }
@@ -77,13 +78,19 @@ model Address {
 //////////////////////////////////////////////////
 
 model Category {
-  id          String    @id @default(uuid())
+  id          String   @id @default(uuid())
   title       String
+  slug        String?  @unique
   description String?
-  isActive      Boolean     @default(true)
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
 
-  products    Product[]
+  products Product[]
 
+  @@index([isActive])
+  @@index([sortOrder])
   @@map("categories")
 }
 
@@ -92,41 +99,246 @@ model Category {
 //////////////////////////////////////////////////
 
 model Product {
-  id            String      @id @default(uuid())
+  id String @id @default(uuid())
 
-  title         String
-  description   String?
+  title       String
+  slug        String?     @unique
+  description String?
+  subHeading  String?
+  brand       String?
+  type        ProductType @default(PHYSICAL)
 
   price         Decimal
   stockQuantity Int
 
-  // ✅ Discount Offer
-  offerPercent  Int?        @default(0)
+  offerPercent Int? @default(0)
 
-  // ✅ Product Images (Multiple)
-  photos        String[]    @default([])
+  photos      String[] @default([])
+  thumbnail   String?
+  bannerImage String?
 
-  // ✅ Key Features
-  features      String[]    @default([])
+  features  String[] @default([])
+  currency  String   @default("BDT")
+  sortOrder Int      @default(0)
 
-  isActive      Boolean     @default(true)
-  createdAt     DateTime    @default(now())
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @default(now()) @updatedAt
+  deletedAt DateTime?
 
-  categoryId    String
-  category      Category    @relation(fields: [categoryId], references: [id])
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
 
-  reviews       Review[]
-  cartItems     CartItem[]
-  orderItems    OrderItem[]
+  createdById String?
+  createdBy   User?   @relation("ProductCreatedBy", fields: [createdById], references: [id])
+  updatedById String?
+  updatedBy   User?   @relation("ProductUpdatedBy", fields: [updatedById], references: [id])
 
-  @@map("products")
+  giftCard     GiftCardProduct?
+  gameTopUp    GameTopUpProduct?
+  subscription SubscriptionProduct?
+  reviews      Review[]
+  cartItems    CartItem[]
+  orderItems   OrderItem[]
 
   @@index([categoryId])
+  @@index([type])
+  @@index([brand])
   @@index([price])
   @@index([createdAt])
   @@index([isActive])
+  @@index([sortOrder])
+  @@map("products")
 }
 
+//////////////////////////////////////////////////
+// GIFT CARD PRODUCT
+//////////////////////////////////////////////////
+
+model GiftCardProduct {
+  id           String @id @default(uuid())
+  productId    String @unique
+  brand        String
+  cardCurrency String @default("USD")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  product       Product                @relation(fields: [productId], references: [id])
+  denominations GiftCardDenomination[]
+
+  @@index([brand])
+  @@map("gift_card_products")
+}
+
+model GiftCardDenomination {
+  id                String  @id @default(uuid())
+  giftCardProductId String
+  title             String?
+  bdtPrice          Decimal
+  cardValue         Decimal
+  cardCurrency      String  @default("USD")
+  isPopular         Boolean @default(false)
+  stockQuantity     Int?
+  sortOrder         Int     @default(0)
+  isActive          Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  giftCardProduct GiftCardProduct @relation(fields: [giftCardProductId], references: [id])
+  cartItems       CartItem[]
+  orderItems      OrderItem[]
+
+  @@index([giftCardProductId])
+  @@index([bdtPrice])
+  @@index([isActive])
+  @@index([sortOrder])
+  @@map("gift_card_denominations")
+}
+
+//////////////////////////////////////////////////
+// GAME TOP-UP PRODUCT
+//////////////////////////////////////////////////
+
+model GameTopUpProduct {
+  id               String  @id @default(uuid())
+  productId        String  @unique
+  gameName         String
+  gameCurrencyName String
+  instructions     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  product     Product               @relation(fields: [productId], references: [id])
+  packages    GameTopUpPackage[]
+  inputFields GameTopUpInputField[]
+
+  @@index([gameName])
+  @@map("game_top_up_products")
+}
+
+model GameTopUpPackage {
+  id                 String  @id @default(uuid())
+  gameTopUpProductId String
+  title              String?
+  price              Decimal
+  gameCurrencyAmount Int
+  isPopular          Boolean @default(false)
+  stockQuantity      Int?
+  sortOrder          Int     @default(0)
+  isActive           Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  gameTopUpProduct GameTopUpProduct @relation(fields: [gameTopUpProductId], references: [id])
+  cartItems        CartItem[]
+  orderItems       OrderItem[]
+
+  @@index([gameTopUpProductId])
+  @@index([price])
+  @@index([isActive])
+  @@index([sortOrder])
+  @@map("game_top_up_packages")
+}
+
+model GameTopUpInputField {
+  id                 String           @id @default(uuid())
+  gameTopUpProductId String
+  name               String
+  label              String
+  type               ProductInputType @default(TEXT)
+  placeholder        String?
+  helpText           String?
+  isRequired         Boolean          @default(true)
+  options            Json?
+  sortOrder          Int              @default(0)
+  isActive           Boolean          @default(true)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @default(now()) @updatedAt
+
+  gameTopUpProduct GameTopUpProduct @relation(fields: [gameTopUpProductId], references: [id])
+
+  @@unique([gameTopUpProductId, name])
+  @@index([gameTopUpProductId])
+  @@index([sortOrder])
+  @@index([isActive])
+  @@map("game_top_up_input_fields")
+}
+
+//////////////////////////////////////////////////
+// SUBSCRIPTION PRODUCT
+//////////////////////////////////////////////////
+
+model SubscriptionProduct {
+  id           String  @id @default(uuid())
+  productId    String  @unique
+  platformName String
+  instructions String?
+  isRenewable  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  product     Product                  @relation(fields: [productId], references: [id])
+  plans       SubscriptionPlan[]
+  inputFields SubscriptionInputField[]
+
+  @@index([platformName])
+  @@map("subscription_products")
+}
+
+model SubscriptionPlan {
+  id                    String  @id @default(uuid())
+  subscriptionProductId String
+  title                 String
+  price                 Decimal
+  durationDays          Int?
+  durationLabel         String?
+  isPopular             Boolean @default(false)
+  stockQuantity         Int?
+  sortOrder             Int     @default(0)
+  isActive              Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  subscriptionProduct SubscriptionProduct @relation(fields: [subscriptionProductId], references: [id])
+  cartItems           CartItem[]
+  orderItems          OrderItem[]
+
+  @@index([subscriptionProductId])
+  @@index([price])
+  @@index([isActive])
+  @@index([sortOrder])
+  @@map("subscription_plans")
+}
+
+model SubscriptionInputField {
+  id                    String           @id @default(uuid())
+  subscriptionProductId String
+  name                  String
+  label                 String
+  type                  ProductInputType @default(TEXT)
+  placeholder           String?
+  helpText              String?
+  isRequired            Boolean          @default(true)
+  options               Json?
+  sortOrder             Int              @default(0)
+  isActive              Boolean          @default(true)
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @default(now()) @updatedAt
+
+  subscriptionProduct SubscriptionProduct @relation(fields: [subscriptionProductId], references: [id])
+
+  @@unique([subscriptionProductId, name])
+  @@index([subscriptionProductId])
+  @@index([sortOrder])
+  @@index([isActive])
+  @@map("subscription_input_fields")
+}
 
 //////////////////////////////////////////////////
 // REVIEW
@@ -141,25 +353,24 @@ model Review {
   userId    String
   productId String
 
-  user      User     @relation(fields: [userId], references: [id])
-  product   Product  @relation(fields: [productId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
 
   @@unique([userId, productId]) // 🔒 prevents duplicate reviews
   @@map("reviews")
 }
-
 
 //////////////////////////////////////////////////
 // CART
 //////////////////////////////////////////////////
 
 model Cart {
-  id        String     @id @default(uuid())
-  userId    String     @unique
-  updatedAt DateTime   @updatedAt
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  updatedAt DateTime @updatedAt
 
-  user      User       @relation(fields: [userId], references: [id])
-  items     CartItem[]
+  user  User       @relation(fields: [userId], references: [id])
+  items CartItem[]
 
   @@map("carts")
 }
@@ -169,16 +380,30 @@ model Cart {
 //////////////////////////////////////////////////
 
 model CartItem {
-  id        String   @id @default(uuid())
-  quantity  Int
+  id             String   @id @default(uuid())
+  quantity       Int
+  customerInputs Json?
+  unitPrice      Decimal?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
 
-  cartId    String
-  productId String
+  cartId                 String
+  productId              String
+  giftCardDenominationId String?
+  gameTopUpPackageId     String?
+  subscriptionPlanId     String?
+  optionKey              String  @default("default")
 
-  cart      Cart     @relation(fields: [cartId], references: [id])
-  product   Product  @relation(fields: [productId], references: [id])
+  cart                 Cart                  @relation(fields: [cartId], references: [id])
+  product              Product               @relation(fields: [productId], references: [id])
+  giftCardDenomination GiftCardDenomination? @relation(fields: [giftCardDenominationId], references: [id])
+  gameTopUpPackage     GameTopUpPackage?     @relation(fields: [gameTopUpPackageId], references: [id])
+  subscriptionPlan     SubscriptionPlan?     @relation(fields: [subscriptionPlanId], references: [id])
 
-  @@unique([cartId, productId])
+  @@unique([cartId, productId, optionKey])
+  @@index([giftCardDenominationId])
+  @@index([gameTopUpPackageId])
+  @@index([subscriptionPlanId])
   @@map("cart_items")
 }
 
@@ -187,20 +412,30 @@ model CartItem {
 //////////////////////////////////////////////////
 
 model Order {
-  id          String       @id @default(uuid())
-  totalCost   Decimal
-  status      OrderStatus  @default(PENDING)
-  createdAt   DateTime     @default(now())
+  id            String        @id @default(uuid())
+  orderNumber   String?       @unique
+  subtotal      Decimal?
+  discountTotal Decimal?      @default(0)
+  totalCost     Decimal
+  status        OrderStatus   @default(PENDING)
+  paymentStatus PaymentStatus @default(PENDING)
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @default(now()) @updatedAt
 
-  userId      String
-  addressId   String
+  userId    String
+  addressId String?
 
-  user        User         @relation(fields: [userId], references: [id])
-  address     Address      @relation(fields: [addressId], references: [id])
+  user    User     @relation(fields: [userId], references: [id])
+  address Address? @relation(fields: [addressId], references: [id])
 
-  items       OrderItem[]
-  payment     Payment?
+  items   OrderItem[]
+  payment Payment?
 
+  @@index([userId])
+  @@index([status])
+  @@index([paymentStatus])
+  @@index([createdAt])
   @@map("orders")
 }
 
@@ -209,16 +444,38 @@ model Order {
 //////////////////////////////////////////////////
 
 model OrderItem {
-  id        String   @id @default(uuid())
-  price     Decimal
-  quantity  Int
+  id                   String         @id @default(uuid())
+  price                Decimal
+  quantity             Int
+  totalPrice           Decimal?
+  productTitle         String?
+  productType          ProductType?
+  optionTitle          String?
+  customerInputs       Json?
+  deliveryStatus       DeliveryStatus @default(PENDING)
+  fulfillmentReference String?
+  fulfilledAt          DateTime?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @default(now()) @updatedAt
 
-  orderId   String
-  productId String
+  orderId                String
+  productId              String
+  giftCardDenominationId String?
+  gameTopUpPackageId     String?
+  subscriptionPlanId     String?
 
-  order     Order    @relation(fields: [orderId], references: [id])
-  product   Product  @relation(fields: [productId], references: [id])
+  order                Order                 @relation(fields: [orderId], references: [id])
+  product              Product               @relation(fields: [productId], references: [id])
+  giftCardDenomination GiftCardDenomination? @relation(fields: [giftCardDenominationId], references: [id])
+  gameTopUpPackage     GameTopUpPackage?     @relation(fields: [gameTopUpPackageId], references: [id])
+  subscriptionPlan     SubscriptionPlan?     @relation(fields: [subscriptionPlanId], references: [id])
 
+  @@index([orderId])
+  @@index([productId])
+  @@index([giftCardDenominationId])
+  @@index([gameTopUpPackageId])
+  @@index([subscriptionPlanId])
+  @@index([deliveryStatus])
   @@map("order_items")
 }
 
@@ -227,17 +484,48 @@ model OrderItem {
 //////////////////////////////////////////////////
 
 model Payment {
-  id             String         @id @default(uuid())
-  paymentMethod  PaymentMethod
-  paymentStatus  PaymentStatus  @default(PENDING)
-  transactionId  String?
-  paidAt         DateTime?
+  id                    String        @id @default(uuid())
+  paymentMethod         PaymentMethod
+  paymentStatus         PaymentStatus @default(PENDING)
+  transactionId         String?
+  providerPaymentId     String?
+  merchantInvoiceNumber String?
+  payerAccount          String?
+  amount                Decimal?
+  currency              String        @default("BDT")
+  rawResponse           Json?
+  failureReason         String?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @default(now()) @updatedAt
+  paidAt                DateTime?
 
-  orderId        String         @unique
-  order          Order          @relation(fields: [orderId], references: [id])
+  orderId String @unique
+  order   Order  @relation(fields: [orderId], references: [id])
 
+  @@index([paymentMethod])
+  @@index([paymentStatus])
+  @@index([transactionId])
+  @@index([createdAt])
   @@map("payments")
 }
 
+//////////////////////////////////////////////////
+// AUDIT LOG
+//////////////////////////////////////////////////
 
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
 
+  actor User? @relation(fields: [actorId], references: [id])
+
+  @@index([actorId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

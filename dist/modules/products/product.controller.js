@@ -10,7 +10,7 @@ const product_service_1 = require("./product.service");
  * Add Product
  */
 const addProduct = (0, catchAsync_1.default)(async (req, res) => {
-    const result = await product_service_1.productServices.addProduct(req.body);
+    const result = await product_service_1.productServices.addProduct(req.body, req.authUser?.id);
     res.status(201).json({
         success: true,
         message: "Product added successfully",
@@ -22,7 +22,7 @@ const addProduct = (0, catchAsync_1.default)(async (req, res) => {
  */
 const updateProduct = (0, catchAsync_1.default)(async (req, res) => {
     const { id } = req.params;
-    const result = await product_service_1.productServices.updateProduct(id, req.body);
+    const result = await product_service_1.productServices.updateProduct(id, req.body, req.authUser?.id);
     res.status(200).json({
         success: true,
         message: "Product updated successfully",

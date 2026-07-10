@@ -2,10 +2,11 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.reviewRouter = void 0;
 const express_1 = require("express");
+const auth_middleware_1 = require("../../middlewares/auth.middleware");
 const review_controller_1 = require("./review.controller");
 const router = (0, express_1.Router)();
 router.get("/product/:productId", review_controller_1.reviewControllers.getProductReviews);
-router.post("/", review_controller_1.reviewControllers.createReview);
-router.patch("/:id", review_controller_1.reviewControllers.updateReview);
-router.delete("/:id", review_controller_1.reviewControllers.deleteReview);
+router.post("/", auth_middleware_1.authenticateUser, review_controller_1.reviewControllers.createReview);
+router.patch("/:id", auth_middleware_1.authenticateUser, review_controller_1.reviewControllers.updateReview);
+router.delete("/:id", auth_middleware_1.authenticateUser, review_controller_1.reviewControllers.deleteReview);
 exports.reviewRouter = router;

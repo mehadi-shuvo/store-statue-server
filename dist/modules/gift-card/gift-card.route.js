@@ -1,0 +1,13 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.giftCardRouter = void 0;
+const express_1 = require("express");
+const auth_middleware_1 = require("../../middlewares/auth.middleware");
+const gift_card_controller_1 = require("./gift-card.controller");
+const router = (0, express_1.Router)();
+router.get("/", gift_card_controller_1.giftCardControllers.getGiftCards);
+router.get("/:id", gift_card_controller_1.giftCardControllers.getGiftCardById);
+router.post("/", auth_middleware_1.authenticateUser, auth_middleware_1.requireAdmin, gift_card_controller_1.giftCardControllers.createGiftCard);
+router.patch("/:id", auth_middleware_1.authenticateUser, auth_middleware_1.requireAdmin, gift_card_controller_1.giftCardControllers.updateGiftCard);
+router.delete("/:id", auth_middleware_1.authenticateUser, auth_middleware_1.requireAdmin, gift_card_controller_1.giftCardControllers.deleteGiftCard);
+exports.giftCardRouter = router;

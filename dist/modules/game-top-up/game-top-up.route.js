@@ -1,0 +1,13 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.gameTopUpRouter = void 0;
+const express_1 = require("express");
+const auth_middleware_1 = require("../../middlewares/auth.middleware");
+const game_top_up_controller_1 = require("./game-top-up.controller");
+const router = (0, express_1.Router)();
+router.get("/", game_top_up_controller_1.gameTopUpControllers.getTopUps);
+router.get("/:id", game_top_up_controller_1.gameTopUpControllers.getTopUpById);
+router.post("/", auth_middleware_1.authenticateUser, auth_middleware_1.requireAdmin, game_top_up_controller_1.gameTopUpControllers.createTopUp);
+router.patch("/:id", auth_middleware_1.authenticateUser, auth_middleware_1.requireAdmin, game_top_up_controller_1.gameTopUpControllers.updateTopUp);
+router.delete("/:id", auth_middleware_1.authenticateUser, auth_middleware_1.requireAdmin, game_top_up_controller_1.gameTopUpControllers.deleteTopUp);
+exports.gameTopUpRouter = router;

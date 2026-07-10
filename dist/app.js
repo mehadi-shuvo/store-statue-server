@@ -8,7 +8,9 @@ const cors_1 = __importDefault(require("cors"));
 const routes_1 = __importDefault(require("./app/routes"));
 const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const env_config_1 = require("./utils/env-config");
+const globalErrorHandler_1 = require("./middlewares/globalErrorHandler");
 const app = (0, express_1.default)();
+app.set("trust proxy", 1);
 const normalizeOrigin = (origin) => origin.replace(/\/+$/, "");
 const allowedOrigins = [
     env_config_1.ENV.CLIENT_URL,
@@ -34,4 +36,5 @@ app.use("/api", routes_1.default);
 app.get("/", (req, res) => {
     res.send(`game express server is running ...`);
 });
+app.use(globalErrorHandler_1.globalErrorHandler);
 exports.default = app;

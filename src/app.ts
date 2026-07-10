@@ -8,6 +8,8 @@ import { globalErrorHandler } from "./middlewares/globalErrorHandler";
 
 const app: Express = express();
 
+app.set("trust proxy", 1);
+
 const normalizeOrigin = (origin: string) => origin.replace(/\/+$/, "");
 
 const allowedOrigins = [

@@ -11,6 +11,34 @@ const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const sendEmail_1 = require("../../utils/sendEmail");
 const generateOTP_1 = require("../../utils/generateOTP");
+const client_1 = require("../../generated/prisma/client");
+const DUMMY_PASSWORD_HASH = "$2b$12$h6TRZPS.vxvidI7C2qHZeuVMUVEk0jEGbV4i.LPDQzazE9a.5XFV.";
+const userProfileSelect = {
+    id: true,
+    email: true,
+    name: true,
+    phone: true,
+    role: true,
+    createdAt: true,
+    updatedAt: true,
+};
+const isPrismaKnownError = (error, code) => typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === code;
+const getActiveCustomerById = async (userId) => {
+    const user = await prisma_client_1.prismaC.user.findFirst({
+        where: {
+            id: userId,
+            role: client_1.UserRole.CUSTOMER,
+            isDeleted: false,
+        },
+    });
+    if (!user) {
+        throw new apiAppError_1.ApiAppError(404, "Customer profile not found");
+    }
+    return user;
+};
 const createUser = async (payload) => {
     // 1. Check if user already exists (Business Rule)
     const existingUser = await prisma_client_1.prismaC.user.findUnique({
@@ -35,24 +63,35 @@ const createUser = async (payload) => {
                 name: payload.name,
                 phone: payload.phone,
                 password: hashedPassword,
+                role: client_1.UserRole.CUSTOMER,
             },
             select: {
                 id: true,
                 email: true,
                 name: true,
                 phone: true,
+                role: true,
                 createdAt: true,
             },
         });
         return user;
     }
     catch (error) {
+        if (isPrismaKnownError(error, "P2002")) {
+            throw new apiAppError_1.ApiAppError(409, "User with this email already exists");
+        }
         throw new apiAppError_1.ApiAppError(500, "Failed to create user", error);
     }
 };
-const loginUser = async (email, password) => {
-    const user = await prisma_client_1.prismaC.user.findUnique({ where: { email } });
+const loginUser = async ({ email, password }) => {
+    const user = await prisma_client_1.prismaC.user.findFirst({
+        where: {
+            email,
+            isDeleted: false,
+        },
+    });
     if (!user) {
+        await bcryptjs_1.default.compare(password, DUMMY_PASSWORD_HASH);
         throw new apiAppError_1.ApiAppError(401, "Invalid email or password");
     }
     const isPasswordMatched = await bcryptjs_1.default.compare(password, user.password);
@@ -62,7 +101,10 @@ const loginUser = async (email, password) => {
     if (!env_config_1.ENV.JWT_SECRET) {
         throw new apiAppError_1.ApiAppError(500, "JWT secret is not configured. Set JWT_SECRET or JWT_ACCESS_SECRET in .env");
     }
-    const token = jsonwebtoken_1.default.sign({ userId: user.id, email: user.email }, env_config_1.ENV.JWT_SECRET, { expiresIn: "3d", algorithm: "HS256" });
+    const token = jsonwebtoken_1.default.sign({ userId: user.id, email: user.email, role: user.role }, env_config_1.ENV.JWT_SECRET, {
+        expiresIn: env_config_1.ENV.JWT_EXPIRES_IN,
+        algorithm: "HS256",
+    });
     return {
         accessToken: token,
         user: {
@@ -70,8 +112,46 @@ const loginUser = async (email, password) => {
             email: user.email,
             name: user.name,
             phone: user.phone,
+            role: user.role,
         },
     };
+};
+const getCustomerProfile = async (userId) => {
+    await getActiveCustomerById(userId);
+    return prisma_client_1.prismaC.user.findUnique({
+        where: { id: userId },
+        select: userProfileSelect,
+    });
+};
+const updateCustomerProfile = async (userId, payload) => {
+    await getActiveCustomerById(userId);
+    return prisma_client_1.prismaC.user.update({
+        where: { id: userId },
+        data: {
+            ...(payload.name !== undefined ? { name: payload.name } : {}),
+            ...(payload.phone !== undefined ? { phone: payload.phone } : {}),
+        },
+        select: userProfileSelect,
+    });
+};
+const deleteCustomerProfile = async (userId, payload) => {
+    const user = await getActiveCustomerById(userId);
+    const isPasswordMatched = await bcryptjs_1.default.compare(payload.password, user.password);
+    if (!isPasswordMatched) {
+        throw new apiAppError_1.ApiAppError(401, "Invalid password");
+    }
+    const anonymizedPassword = await bcryptjs_1.default.hash(`deleted:${userId}:${Date.now()}`, env_config_1.ENV.BCRYPT_SALT);
+    await prisma_client_1.prismaC.user.update({
+        where: { id: userId },
+        data: {
+            email: `deleted-${userId}@deleted.local`,
+            name: "Deleted Customer",
+            phone: null,
+            password: anonymizedPassword,
+            isDeleted: true,
+        },
+    });
+    return { deleted: true };
 };
 const forgotPassword = async (email) => {
     const user = await prisma_client_1.prismaC.user.findUnique({
@@ -121,6 +201,7 @@ const getUsers = async () => {
             email: true,
             name: true,
             phone: true,
+            role: true,
             createdAt: true,
         },
     });
@@ -128,6 +209,9 @@ const getUsers = async () => {
 exports.userService = {
     createUser,
     loginUser,
+    getCustomerProfile,
+    updateCustomerProfile,
+    deleteCustomerProfile,
     forgotPassword,
     verifyOtp,
     getUsers,
