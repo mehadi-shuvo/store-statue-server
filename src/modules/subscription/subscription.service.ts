@@ -1,226 +1,199 @@
-import { ProductType } from "../../generated/prisma/client";
+import { ProductStatus } from "../../generated/prisma/client";
 import { ApiAppError } from "../../utils/apiAppError";
 import { prismaC } from "../../utils/prisma-client";
-import { productServices } from "../products/product.service";
 
-type SubscriptionPlanPayload = {
-  title: string;
-  price: number;
-  durationDays?: number;
-  durationLabel?: string;
-  isPopular?: boolean;
-  popular?: boolean;
-  stockQuantity?: number;
-  sortOrder?: number;
-  isActive?: boolean;
+type Payload = Record<string, any>;
+type Query = Record<string, any>;
+
+const include = {
+  category: { select: { id: true, title: true, slug: true } },
+  plans: { orderBy: { sortOrder: "asc" as const } },
+  inputFields: { orderBy: { sortOrder: "asc" as const } },
 };
 
-type InputFieldPayload = {
-  name: string;
-  label: string;
-  type?: "TEXT" | "NUMBER" | "EMAIL" | "PHONE" | "SELECT";
-  placeholder?: string;
-  helpText?: string;
-  isRequired?: boolean;
-  options?: unknown;
-  sortOrder?: number;
-  isActive?: boolean;
+const positiveNumber = (value: unknown, field: string) => {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) {
+    throw new ApiAppError(400, `${field} must be greater than 0`);
+  }
+  return number;
 };
 
-type SubscriptionPayload = {
-  title: string;
-  slug?: string;
-  platformName?: string;
-  description?: string;
-  subHeading?: string;
-  image?: string;
-  photos?: string[];
-  thumbnail?: string;
-  bannerImage?: string;
-  categoryId: string;
-  price?: number;
-  stockQuantity?: number;
-  offerPercent?: number;
-  features?: string[];
-  sortOrder?: number;
-  instructions?: string;
-  isRenewable?: boolean;
-  plans: SubscriptionPlanPayload[];
-  inputFields?: InputFieldPayload[];
+const optionalNonNegativeInteger = (value: unknown, field: string) => {
+  if (value === undefined || value === null) return value;
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < 0) {
+    throw new ApiAppError(400, `${field} must be a non-negative integer or null`);
+  }
+  return number;
 };
 
-const normalizePlans = (payload: SubscriptionPayload) => {
+const plansFrom = (payload: Payload) => {
   if (!Array.isArray(payload.plans) || payload.plans.length === 0) {
     throw new ApiAppError(400, "Subscription plans are required");
   }
-
-  return payload.plans.map((plan, index) => {
-    if (!plan.title || !plan.price) {
+  return payload.plans.map((plan: any, index: number) => {
+    const sellingPriceBDT = plan.sellingPriceBDT ?? plan.price;
+    if (!plan.title || sellingPriceBDT == null || !plan.billingCycle) {
       throw new ApiAppError(
         400,
-        `Subscription plan at index ${index} must include title and price`,
+        `Plan at index ${index} requires title, sellingPriceBDT and billingCycle`,
       );
     }
-
     return {
       title: plan.title,
-      price: plan.price,
-      durationDays: plan.durationDays,
+      description: plan.description,
+      sellingPriceBDT: positiveNumber(sellingPriceBDT, `sellingPriceBDT at index ${index}`),
+      costPriceBDT: plan.costPriceBDT,
+      billingCycle: plan.billingCycle,
+      durationDays: optionalNonNegativeInteger(plan.durationDays, `durationDays at index ${index}`),
       durationLabel: plan.durationLabel,
+      maxDevices: optionalNonNegativeInteger(plan.maxDevices, `maxDevices at index ${index}`),
+      maxUsers: optionalNonNegativeInteger(plan.maxUsers, `maxUsers at index ${index}`),
+      screenCount: optionalNonNegativeInteger(plan.screenCount, `screenCount at index ${index}`),
+      profileCount: optionalNonNegativeInteger(plan.profileCount, `profileCount at index ${index}`),
+      accountType: plan.accountType,
+      subscriptionTier: plan.subscriptionTier,
+      features: plan.features ?? [],
+      discountAmountBDT: plan.discountAmountBDT,
+      discountPercent: plan.discountPercent,
+      discountLabel: plan.discountLabel,
       isPopular: plan.isPopular ?? plan.popular ?? false,
-      stockQuantity: plan.stockQuantity,
-      sortOrder: plan.sortOrder ?? index,
       isActive: plan.isActive ?? true,
+      sortOrder: plan.sortOrder ?? index,
+      stockQuantity: optionalNonNegativeInteger(plan.stockQuantity, `stockQuantity at index ${index}`),
     };
   });
 };
 
-const buildProductPayload = (payload: SubscriptionPayload) => {
-  const plans = normalizePlans(payload);
-  const lowestPrice = Math.min(...plans.map((plan) => plan.price));
-  const image = payload.thumbnail || payload.image;
+const inputFieldsFrom = (values: any[] = []) =>
+  values.map((item, index) => ({
+    name: item.name,
+    label: item.label,
+    type: item.type ?? "TEXT",
+    placeholder: item.placeholder,
+    helpText: item.helpText,
+    isRequired: item.isRequired ?? true,
+    options: item.options,
+    validationRules: item.validationRules,
+    isActive: item.isActive ?? true,
+    sortOrder: item.sortOrder ?? index,
+  }));
 
-  return {
-    title: payload.title,
-    slug: payload.slug,
-    description: payload.description,
-    subHeading: payload.subHeading,
-    brand: payload.platformName || payload.title,
-    type: ProductType.SUBSCRIPTION,
-    price: payload.price ?? lowestPrice,
-    stockQuantity: payload.stockQuantity ?? 999999,
-    categoryId: payload.categoryId,
-    offerPercent: payload.offerPercent,
-    photos: payload.photos || (image ? [image] : []),
-    thumbnail: image,
-    bannerImage: payload.bannerImage,
-    features: payload.features,
-    currency: "BDT",
-    sortOrder: payload.sortOrder,
-    subscription: {
-      platformName: payload.platformName || payload.title,
-      instructions: payload.instructions,
-      isRenewable: payload.isRenewable ?? true,
-      plans,
-      inputFields:
-        payload.inputFields || [
-          {
-            name: "accountEmail",
-            label: "Account Email",
-            type: "EMAIL" as const,
-            isRequired: true,
-            sortOrder: 0,
-          },
-        ],
-    },
-  };
-};
+const productData = (p: Payload, userId?: string) => ({
+  ...(p.platformName !== undefined && { platformName: p.platformName }),
+  ...(p.title !== undefined && { title: p.title }),
+  ...(p.slug !== undefined && { slug: p.slug }),
+  ...(p.subHeading !== undefined && { subHeading: p.subHeading }),
+  ...(p.description !== undefined && { description: p.description }),
+  ...(p.logo !== undefined && { logo: p.logo }),
+  ...(p.image !== undefined && { logo: p.image }),
+  ...(p.thumbnail !== undefined && { logo: p.thumbnail }),
+  ...(p.bannerImage !== undefined && { bannerImage: p.bannerImage }),
+  ...(p.deliveryType !== undefined && { deliveryType: p.deliveryType }),
+  ...(p.instructions !== undefined && { instructions: p.instructions }),
+  ...(p.estimatedDelivery !== undefined && { estimatedDelivery: p.estimatedDelivery }),
+  ...(p.termsAndConditions !== undefined && { termsAndConditions: p.termsAndConditions }),
+  ...(p.isRenewable !== undefined && { isRenewable: p.isRenewable }),
+  ...(p.status !== undefined && { status: p.status }),
+  ...(p.isFeatured !== undefined && { isFeatured: p.isFeatured }),
+  ...(p.sortOrder !== undefined && { sortOrder: p.sortOrder }),
+  ...(p.categoryId !== undefined && { categoryId: p.categoryId }),
+  ...(userId && { updatedById: userId }),
+});
 
-const getSubscriptions = async (query: { page?: string; limit?: string }) => {
+const getSubscriptions = async (query: Query) => {
   const page = Math.max(Number(query.page) || 1, 1);
-  const limit = Math.min(Number(query.limit) || 12, 100);
-  const skip = (page - 1) * limit;
-
-  const where = {
-    type: ProductType.SUBSCRIPTION,
-    isActive: true,
-  };
-
-  const [products, total] = await prismaC.$transaction([
-    prismaC.product.findMany({
-      where,
-      skip,
-      take: limit,
-      orderBy: { createdAt: "desc" },
-      include: {
-        category: { select: { id: true, title: true } },
-        subscription: {
-          include: {
-            plans: {
-              where: { isActive: true },
-              orderBy: { sortOrder: "asc" },
-            },
-            inputFields: {
-              where: { isActive: true },
-              orderBy: { sortOrder: "asc" },
-            },
-          },
-        },
-      },
-    }),
-    prismaC.product.count({ where }),
-  ]);
-
-  return {
-    meta: {
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    },
-    data: products,
-  };
-};
-
-const getSubscriptionById = async (id: string) => {
-  const product = await prismaC.product.findFirst({
-    where: {
-      id,
-      type: ProductType.SUBSCRIPTION,
-      isActive: true,
-    },
-    include: {
-      category: { select: { id: true, title: true } },
-      subscription: {
-        include: {
-          plans: {
-            where: { isActive: true },
-            orderBy: { sortOrder: "asc" },
-          },
-          inputFields: {
-            where: { isActive: true },
-            orderBy: { sortOrder: "asc" },
-          },
-        },
-      },
-    },
-  });
-
-  if (!product) {
-    throw new ApiAppError(404, "Subscription product not found");
+  const limit = Math.min(Math.max(Number(query.limit) || 12, 1), 100);
+  if (query.status && !Object.values(ProductStatus).includes(query.status as ProductStatus)) {
+    throw new ApiAppError(400, "Invalid product status");
   }
-
-  return product;
+  const where: any = {
+    deletedAt: null,
+    status: query.status ?? "ACTIVE",
+    ...(query.categoryId && { categoryId: query.categoryId }),
+    ...(query.isFeatured !== undefined && { isFeatured: query.isFeatured === "true" }),
+    ...(query.search && {
+      OR: ["platformName", "title", "slug"].map((field) => ({
+        [field]: { contains: query.search, mode: "insensitive" },
+      })),
+    }),
+  };
+  const [data, total] = await prismaC.$transaction([
+    prismaC.subscriptionProduct.findMany({
+      where,
+      skip: (page - 1) * limit,
+      take: limit,
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
+      include,
+    }),
+    prismaC.subscriptionProduct.count({ where }),
+  ]);
+  return { meta: { total, page, limit, totalPages: Math.ceil(total / limit) }, data };
 };
 
-const createSubscription = async (
-  payload: SubscriptionPayload,
-  adminUserId?: string,
-) => {
-  return productServices.addProduct(buildProductPayload(payload), adminUserId);
+const getSubscriptionById = async (id: string, includeInactive = false) => {
+  const result = await prismaC.subscriptionProduct.findFirst({
+    where: {
+      OR: [{ id }, { slug: id }],
+      deletedAt: null,
+      ...(includeInactive ? {} : { status: ProductStatus.ACTIVE }),
+    },
+    include,
+  });
+  if (!result) throw new ApiAppError(404, "Subscription product not found");
+  return result;
 };
 
-const updateSubscription = async (
-  id: string,
-  payload: Partial<SubscriptionPayload>,
-  adminUserId?: string,
-) => {
-  await getSubscriptionById(id);
+const createSubscription = async (payload: Payload, userId?: string) => {
+  const plans = plansFrom(payload);
+  const logo = payload.logo ?? payload.image ?? payload.thumbnail;
+  const platformName = payload.platformName ?? payload.title;
+  if (!platformName || !payload.title || !payload.slug || !logo || !payload.deliveryType) {
+    throw new ApiAppError(
+      400,
+      "platformName, title, slug, logo and deliveryType are required",
+    );
+  }
+  return prismaC.subscriptionProduct.create({
+    data: {
+      ...productData(payload),
+      platformName,
+      title: payload.title,
+      slug: payload.slug,
+      logo,
+      deliveryType: payload.deliveryType,
+      ...(userId && { createdById: userId, updatedById: userId }),
+      plans: { create: plans },
+      inputFields: { create: inputFieldsFrom(payload.inputFields) },
+    },
+    include,
+  });
+};
 
-  const productPayload = payload.plans
-    ? buildProductPayload(payload as SubscriptionPayload)
-    : {
-        ...payload,
-        brand: payload.platformName,
-        type: ProductType.SUBSCRIPTION,
-      };
-
-  return productServices.updateProduct(id, productPayload, adminUserId);
+const updateSubscription = async (id: string, payload: Payload, userId?: string) => {
+  const existing = await getSubscriptionById(id, true);
+  const plans = payload.plans ? plansFrom(payload) : undefined;
+  const inputFields = payload.inputFields
+    ? inputFieldsFrom(payload.inputFields)
+    : undefined;
+  return prismaC.subscriptionProduct.update({
+    where: { id: existing.id },
+    data: {
+      ...productData(payload, userId),
+      ...(plans && { plans: { deleteMany: {}, create: plans } }),
+      ...(inputFields && { inputFields: { deleteMany: {}, create: inputFields } }),
+    },
+    include,
+  });
 };
 
 const deleteSubscription = async (id: string) => {
-  await getSubscriptionById(id);
-  return productServices.deleteProduct(id);
+  const existing = await getSubscriptionById(id, true);
+  return prismaC.subscriptionProduct.update({
+    where: { id: existing.id },
+    data: { status: "ARCHIVED", deletedAt: new Date() },
+  });
 };
 
 export const subscriptionServices = {

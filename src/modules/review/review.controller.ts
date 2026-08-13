@@ -12,11 +12,12 @@ const getAuthenticatedUserId = (req: Request) => {
 };
 
 const createReview = catchAsync(async (req, res) => {
-  const { productId, rating, comment } = req.body;
+  const { productId, productType, rating, comment } = req.body;
 
   const result = await reviewServices.createReview({
     userId: getAuthenticatedUserId(req),
     productId,
+    productType,
     rating,
     comment,
   });
@@ -30,7 +31,7 @@ const createReview = catchAsync(async (req, res) => {
 
 const updateReview = catchAsync(async (req, res) => {
   const { id } = req.params;
-  const { payload } = req.body;
+  const payload = req.body.payload ?? req.body;
 
   const result = await reviewServices.updateReview(
     id,

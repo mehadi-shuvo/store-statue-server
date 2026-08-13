@@ -1,20 +1,26 @@
 // utils/sendEmail.ts
 import nodemailer from "nodemailer";
+import { ApiAppError } from "./apiAppError";
 import { ENV } from "./env-config";
 
 export const sendEmail = async (to: string, subject: string, text: string) => {
+  if (!ENV.SENDER_MAIL_USER || !ENV.MAIL_PASS) {
+    throw new ApiAppError(500, "Email service is not configured");
+  }
+
   const transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 465,
-    secure: true,
+    ...(ENV.MAIL_SERVICE
+      ? { service: ENV.MAIL_SERVICE }
+      : { host: ENV.HOST_MAIL, port: ENV.EMAIL_PORT }),
+    secure: ENV.EMAIL_PORT === 465,
     auth: {
-      user: "mehadihasanshuvo88@gmail.com",
-      pass: "mubyqpxkroscmsso",
+      user: ENV.SENDER_MAIL_USER,
+      pass: ENV.MAIL_PASS,
     },
   });
 
   await transporter.sendMail({
-    from: "mehadihasanshuvo88@gmail.com",
+    from: ENV.SENDER_MAIL_USER,
     to,
     subject,
     text,

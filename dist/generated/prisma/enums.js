@@ -9,59 +9,120 @@
 * 🟢 You can import this file directly.
 */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.DeliveryStatus = exports.ProductInputType = exports.ProductType = exports.UserRole = exports.OtpType = exports.PaymentMethod = exports.PaymentStatus = exports.OrderStatus = void 0;
-exports.OrderStatus = {
-    PENDING: 'PENDING',
-    CONFIRMED: 'CONFIRMED',
-    PROCESSING: 'PROCESSING',
-    COMPLETED: 'COMPLETED',
-    DELIVERED: 'DELIVERED',
-    RECEIVED: 'RECEIVED',
-    CANCELLED: 'CANCELLED',
-    REFUNDED: 'REFUNDED'
-};
-exports.PaymentStatus = {
-    PENDING: 'PENDING',
-    PROCESSING: 'PROCESSING',
-    PAID: 'PAID',
-    FAILED: 'FAILED',
-    CANCELLED: 'CANCELLED',
-    REFUNDED: 'REFUNDED'
-};
-exports.PaymentMethod = {
-    BKASH: 'BKASH',
-    SSL_COMMERZ: 'SSL_COMMERZ',
-    CARD: 'CARD',
-    MOBILE_BANKING: 'MOBILE_BANKING',
-    CASH_ON_DELIVERY: 'CASH_ON_DELIVERY'
-};
-exports.OtpType = {
-    PAYMENT: 'PAYMENT',
-    AUTHENTICATION: 'AUTHENTICATION'
-};
+exports.PaymentMethod = exports.DeliveryStatus = exports.PaymentStatus = exports.OrderStatus = exports.SubscriptionBillingCycle = exports.SubscriptionDeliveryType = exports.GameTopUpFulfillmentType = exports.GiftCardRegion = exports.GiftCardDeliveryType = exports.ProductInputType = exports.ProductStatus = exports.DigitalProductType = exports.OtpType = exports.UserRole = void 0;
 exports.UserRole = {
     CUSTOMER: 'CUSTOMER',
     ADMIN: 'ADMIN',
-    SUPER_ADMIN: 'SUPER_ADMIN'
+    SUPER_ADMIN: 'SUPER_ADMIN',
+    STAFF: 'STAFF'
 };
-exports.ProductType = {
-    PHYSICAL: 'PHYSICAL',
+exports.OtpType = {
+    EMAIL_VERIFICATION: 'EMAIL_VERIFICATION',
+    PHONE_VERIFICATION: 'PHONE_VERIFICATION',
+    PASSWORD_RESET: 'PASSWORD_RESET',
+    LOGIN: 'LOGIN'
+};
+exports.DigitalProductType = {
     GIFT_CARD: 'GIFT_CARD',
     GAME_TOP_UP: 'GAME_TOP_UP',
     SUBSCRIPTION: 'SUBSCRIPTION'
+};
+exports.ProductStatus = {
+    DRAFT: 'DRAFT',
+    ACTIVE: 'ACTIVE',
+    INACTIVE: 'INACTIVE',
+    OUT_OF_STOCK: 'OUT_OF_STOCK',
+    ARCHIVED: 'ARCHIVED'
 };
 exports.ProductInputType = {
     TEXT: 'TEXT',
     NUMBER: 'NUMBER',
     EMAIL: 'EMAIL',
     PHONE: 'PHONE',
-    SELECT: 'SELECT'
+    SELECT: 'SELECT',
+    RADIO: 'RADIO',
+    TEXTAREA: 'TEXTAREA'
+};
+exports.GiftCardDeliveryType = {
+    CODE: 'CODE',
+    LINK: 'LINK',
+    MANUAL: 'MANUAL',
+    ACCOUNT_RECHARGE: 'ACCOUNT_RECHARGE'
+};
+exports.GiftCardRegion = {
+    GLOBAL: 'GLOBAL',
+    USA: 'USA',
+    UK: 'UK',
+    CANADA: 'CANADA',
+    EUROPE: 'EUROPE',
+    AUSTRALIA: 'AUSTRALIA',
+    INDIA: 'INDIA',
+    BANGLADESH: 'BANGLADESH',
+    SINGAPORE: 'SINGAPORE',
+    JAPAN: 'JAPAN',
+    UAE: 'UAE',
+    OTHER: 'OTHER'
+};
+exports.GameTopUpFulfillmentType = {
+    PLAYER_ID: 'PLAYER_ID',
+    PLAYER_ID_AND_SERVER: 'PLAYER_ID_AND_SERVER',
+    EMAIL: 'EMAIL',
+    PHONE: 'PHONE',
+    LOGIN_CREDENTIALS: 'LOGIN_CREDENTIALS',
+    REDEEM_CODE: 'REDEEM_CODE',
+    MANUAL: 'MANUAL'
+};
+exports.SubscriptionDeliveryType = {
+    ACCOUNT_CREDENTIALS: 'ACCOUNT_CREDENTIALS',
+    CUSTOMER_ACCOUNT_ACTIVATION: 'CUSTOMER_ACCOUNT_ACTIVATION',
+    FAMILY_INVITATION: 'FAMILY_INVITATION',
+    REDEEM_CODE: 'REDEEM_CODE',
+    LICENSE_KEY: 'LICENSE_KEY',
+    MANUAL: 'MANUAL'
+};
+exports.SubscriptionBillingCycle = {
+    DAILY: 'DAILY',
+    WEEKLY: 'WEEKLY',
+    MONTHLY: 'MONTHLY',
+    QUARTERLY: 'QUARTERLY',
+    HALF_YEARLY: 'HALF_YEARLY',
+    YEARLY: 'YEARLY',
+    LIFETIME: 'LIFETIME',
+    CUSTOM: 'CUSTOM'
+};
+exports.OrderStatus = {
+    PENDING: 'PENDING',
+    CONFIRMED: 'CONFIRMED',
+    PROCESSING: 'PROCESSING',
+    COMPLETED: 'COMPLETED',
+    CANCELLED: 'CANCELLED',
+    REFUNDED: 'REFUNDED',
+    PARTIALLY_REFUNDED: 'PARTIALLY_REFUNDED'
+};
+exports.PaymentStatus = {
+    PENDING: 'PENDING',
+    INITIATED: 'INITIATED',
+    PROCESSING: 'PROCESSING',
+    PAID: 'PAID',
+    FAILED: 'FAILED',
+    CANCELLED: 'CANCELLED',
+    REFUNDED: 'REFUNDED',
+    PARTIALLY_REFUNDED: 'PARTIALLY_REFUNDED'
 };
 exports.DeliveryStatus = {
-    NOT_REQUIRED: 'NOT_REQUIRED',
     PENDING: 'PENDING',
     PROCESSING: 'PROCESSING',
     DELIVERED: 'DELIVERED',
     FAILED: 'FAILED',
+    CANCELLED: 'CANCELLED',
     REFUNDED: 'REFUNDED'
+};
+exports.PaymentMethod = {
+    BKASH: 'BKASH',
+    NAGAD: 'NAGAD',
+    ROCKET: 'ROCKET',
+    CARD: 'CARD',
+    BANK_TRANSFER: 'BANK_TRANSFER',
+    CASH: 'CASH',
+    MANUAL: 'MANUAL'
 };

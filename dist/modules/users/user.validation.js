@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.parseRequestBody = exports.deleteCustomerProfileSchema = exports.updateCustomerProfileSchema = exports.loginSchema = exports.createCustomerSchema = void 0;
+exports.parseRequestBody = exports.deleteCustomerProfileSchema = exports.updateCustomerProfileSchema = exports.resetPasswordSchema = exports.forgotPasswordSchema = exports.loginSchema = exports.createCustomerSchema = void 0;
 const zod_1 = require("zod");
 const apiAppError_1 = require("../../utils/apiAppError");
 const emailSchema = zod_1.z
@@ -36,6 +36,14 @@ exports.loginSchema = zod_1.z
     .object({
     email: emailSchema,
     password: zod_1.z.string().min(1, "Password is required").max(128, "Password is too long"),
+})
+    .strict();
+exports.forgotPasswordSchema = zod_1.z.object({ email: emailSchema }).strict();
+exports.resetPasswordSchema = zod_1.z
+    .object({
+    email: emailSchema,
+    otp: zod_1.z.string().trim().regex(/^\d{6}$/, "OTP must be a 6-digit code"),
+    newPassword: passwordSchema,
 })
     .strict();
 exports.updateCustomerProfileSchema = zod_1.z

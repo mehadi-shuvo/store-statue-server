@@ -48,7 +48,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.defineExtension = exports.JsonNullValueFilter = exports.NullsOrder = exports.QueryMode = exports.NullableJsonNullValueInput = exports.SortOrder = exports.AuditLogScalarFieldEnum = exports.PaymentScalarFieldEnum = exports.OrderItemScalarFieldEnum = exports.OrderScalarFieldEnum = exports.CartItemScalarFieldEnum = exports.CartScalarFieldEnum = exports.ReviewScalarFieldEnum = exports.SubscriptionInputFieldScalarFieldEnum = exports.SubscriptionPlanScalarFieldEnum = exports.SubscriptionProductScalarFieldEnum = exports.GameTopUpInputFieldScalarFieldEnum = exports.GameTopUpPackageScalarFieldEnum = exports.GameTopUpProductScalarFieldEnum = exports.GiftCardDenominationScalarFieldEnum = exports.GiftCardProductScalarFieldEnum = exports.ProductScalarFieldEnum = exports.CategoryScalarFieldEnum = exports.AddressScalarFieldEnum = exports.OTPScalarFieldEnum = exports.UserScalarFieldEnum = exports.TransactionIsolationLevel = exports.ModelName = exports.AnyNull = exports.JsonNull = exports.DbNull = exports.NullTypes = exports.prismaVersion = exports.getExtensionContext = exports.Decimal = exports.Sql = exports.raw = exports.join = exports.empty = exports.sql = exports.PrismaClientValidationError = exports.PrismaClientInitializationError = exports.PrismaClientRustPanicError = exports.PrismaClientUnknownRequestError = exports.PrismaClientKnownRequestError = void 0;
+exports.defineExtension = exports.JsonNullValueFilter = exports.NullsOrder = exports.QueryMode = exports.NullableJsonNullValueInput = exports.SortOrder = exports.AuditLogScalarFieldEnum = exports.PaymentScalarFieldEnum = exports.OrderItemScalarFieldEnum = exports.OrderScalarFieldEnum = exports.CartItemScalarFieldEnum = exports.CartScalarFieldEnum = exports.ReviewScalarFieldEnum = exports.SubscriptionInputFieldScalarFieldEnum = exports.SubscriptionPlanScalarFieldEnum = exports.SubscriptionProductScalarFieldEnum = exports.GameTopUpInputFieldScalarFieldEnum = exports.GameTopUpPackageScalarFieldEnum = exports.GameTopUpProductScalarFieldEnum = exports.GiftCardCodeScalarFieldEnum = exports.GiftCardDenominationScalarFieldEnum = exports.GiftCardProductScalarFieldEnum = exports.CategoryScalarFieldEnum = exports.AddressScalarFieldEnum = exports.OTPScalarFieldEnum = exports.UserScalarFieldEnum = exports.TransactionIsolationLevel = exports.ModelName = exports.AnyNull = exports.JsonNull = exports.DbNull = exports.NullTypes = exports.prismaVersion = exports.getExtensionContext = exports.Decimal = exports.Sql = exports.raw = exports.join = exports.empty = exports.sql = exports.PrismaClientValidationError = exports.PrismaClientInitializationError = exports.PrismaClientRustPanicError = exports.PrismaClientUnknownRequestError = exports.PrismaClientKnownRequestError = void 0;
 const runtime = __importStar(require("@prisma/client/runtime/client"));
 /**
  * Prisma Errors
@@ -107,9 +107,9 @@ exports.ModelName = {
     OTP: 'OTP',
     Address: 'Address',
     Category: 'Category',
-    Product: 'Product',
     GiftCardProduct: 'GiftCardProduct',
     GiftCardDenomination: 'GiftCardDenomination',
+    GiftCardCode: 'GiftCardCode',
     GameTopUpProduct: 'GameTopUpProduct',
     GameTopUpPackage: 'GameTopUpPackage',
     GameTopUpInputField: 'GameTopUpInputField',
@@ -140,9 +140,13 @@ exports.UserScalarFieldEnum = {
     phone: 'phone',
     password: 'password',
     role: 'role',
+    isEmailVerified: 'isEmailVerified',
+    isPhoneVerified: 'isPhoneVerified',
+    isActive: 'isActive',
+    isDeleted: 'isDeleted',
     createdAt: 'createdAt',
     updatedAt: 'updatedAt',
-    isDeleted: 'isDeleted'
+    deletedAt: 'deletedAt'
 };
 exports.OTPScalarFieldEnum = {
     id: 'id',
@@ -155,89 +159,119 @@ exports.OTPScalarFieldEnum = {
 };
 exports.AddressScalarFieldEnum = {
     id: 'id',
-    userId: 'userId',
     addressLine: 'addressLine',
     city: 'city',
     country: 'country',
     postalCode: 'postalCode',
-    isDefault: 'isDefault'
+    isDefault: 'isDefault',
+    userId: 'userId',
+    createdAt: 'createdAt',
+    updatedAt: 'updatedAt'
 };
 exports.CategoryScalarFieldEnum = {
     id: 'id',
     title: 'title',
     slug: 'slug',
     description: 'description',
+    image: 'image',
     isActive: 'isActive',
     sortOrder: 'sortOrder',
     createdAt: 'createdAt',
     updatedAt: 'updatedAt'
-};
-exports.ProductScalarFieldEnum = {
-    id: 'id',
-    title: 'title',
-    slug: 'slug',
-    description: 'description',
-    subHeading: 'subHeading',
-    brand: 'brand',
-    type: 'type',
-    price: 'price',
-    stockQuantity: 'stockQuantity',
-    offerPercent: 'offerPercent',
-    photos: 'photos',
-    thumbnail: 'thumbnail',
-    bannerImage: 'bannerImage',
-    features: 'features',
-    currency: 'currency',
-    sortOrder: 'sortOrder',
-    isActive: 'isActive',
-    createdAt: 'createdAt',
-    updatedAt: 'updatedAt',
-    deletedAt: 'deletedAt',
-    categoryId: 'categoryId',
-    createdById: 'createdById',
-    updatedById: 'updatedById'
 };
 exports.GiftCardProductScalarFieldEnum = {
     id: 'id',
-    productId: 'productId',
     brand: 'brand',
+    title: 'title',
+    slug: 'slug',
+    description: 'description',
+    image: 'image',
+    bannerImage: 'bannerImage',
     cardCurrency: 'cardCurrency',
+    region: 'region',
+    deliveryType: 'deliveryType',
+    instructions: 'instructions',
+    termsAndConditions: 'termsAndConditions',
+    status: 'status',
+    isFeatured: 'isFeatured',
+    sortOrder: 'sortOrder',
+    categoryId: 'categoryId',
+    createdById: 'createdById',
+    updatedById: 'updatedById',
     createdAt: 'createdAt',
-    updatedAt: 'updatedAt'
+    updatedAt: 'updatedAt',
+    deletedAt: 'deletedAt'
 };
 exports.GiftCardDenominationScalarFieldEnum = {
     id: 'id',
     giftCardProductId: 'giftCardProductId',
     title: 'title',
-    bdtPrice: 'bdtPrice',
+    sellingPriceBDT: 'sellingPriceBDT',
     cardValue: 'cardValue',
     cardCurrency: 'cardCurrency',
+    costPriceBDT: 'costPriceBDT',
+    discountAmountBDT: 'discountAmountBDT',
+    discountPercent: 'discountPercent',
+    discountLabel: 'discountLabel',
     isPopular: 'isPopular',
-    stockQuantity: 'stockQuantity',
-    sortOrder: 'sortOrder',
     isActive: 'isActive',
+    sortOrder: 'sortOrder',
+    stockQuantity: 'stockQuantity',
+    createdAt: 'createdAt',
+    updatedAt: 'updatedAt'
+};
+exports.GiftCardCodeScalarFieldEnum = {
+    id: 'id',
+    denominationId: 'denominationId',
+    code: 'code',
+    pin: 'pin',
+    serialNo: 'serialNo',
+    expiryDate: 'expiryDate',
+    isSold: 'isSold',
+    soldAt: 'soldAt',
+    orderItemId: 'orderItemId',
     createdAt: 'createdAt',
     updatedAt: 'updatedAt'
 };
 exports.GameTopUpProductScalarFieldEnum = {
     id: 'id',
-    productId: 'productId',
-    gameName: 'gameName',
+    name: 'name',
+    slug: 'slug',
+    subHeading: 'subHeading',
+    title: 'title',
+    description: 'description',
+    logo: 'logo',
+    bannerImage: 'bannerImage',
     gameCurrencyName: 'gameCurrencyName',
+    fulfillmentType: 'fulfillmentType',
     instructions: 'instructions',
+    estimatedDelivery: 'estimatedDelivery',
+    termsAndConditions: 'termsAndConditions',
+    status: 'status',
+    isFeatured: 'isFeatured',
+    sortOrder: 'sortOrder',
+    categoryId: 'categoryId',
+    createdById: 'createdById',
+    updatedById: 'updatedById',
     createdAt: 'createdAt',
-    updatedAt: 'updatedAt'
+    updatedAt: 'updatedAt',
+    deletedAt: 'deletedAt'
 };
 exports.GameTopUpPackageScalarFieldEnum = {
     id: 'id',
     gameTopUpProductId: 'gameTopUpProductId',
     title: 'title',
-    price: 'price',
+    sellingPriceBDT: 'sellingPriceBDT',
     gameCurrencyAmount: 'gameCurrencyAmount',
+    bonusCurrencyAmount: 'bonusCurrencyAmount',
+    costPriceBDT: 'costPriceBDT',
+    discountAmountBDT: 'discountAmountBDT',
+    discountPercent: 'discountPercent',
+    discountLabel: 'discountLabel',
     isPopular: 'isPopular',
-    stockQuantity: 'stockQuantity',
-    sortOrder: 'sortOrder',
     isActive: 'isActive',
+    sortOrder: 'sortOrder',
+    stockQuantity: 'stockQuantity',
     createdAt: 'createdAt',
     updatedAt: 'updatedAt'
 };
@@ -251,31 +285,60 @@ exports.GameTopUpInputFieldScalarFieldEnum = {
     helpText: 'helpText',
     isRequired: 'isRequired',
     options: 'options',
-    sortOrder: 'sortOrder',
+    validationRules: 'validationRules',
     isActive: 'isActive',
+    sortOrder: 'sortOrder',
     createdAt: 'createdAt',
     updatedAt: 'updatedAt'
 };
 exports.SubscriptionProductScalarFieldEnum = {
     id: 'id',
-    productId: 'productId',
     platformName: 'platformName',
+    slug: 'slug',
+    title: 'title',
+    subHeading: 'subHeading',
+    description: 'description',
+    logo: 'logo',
+    bannerImage: 'bannerImage',
+    deliveryType: 'deliveryType',
     instructions: 'instructions',
+    estimatedDelivery: 'estimatedDelivery',
+    termsAndConditions: 'termsAndConditions',
     isRenewable: 'isRenewable',
+    status: 'status',
+    isFeatured: 'isFeatured',
+    sortOrder: 'sortOrder',
+    categoryId: 'categoryId',
+    createdById: 'createdById',
+    updatedById: 'updatedById',
     createdAt: 'createdAt',
-    updatedAt: 'updatedAt'
+    updatedAt: 'updatedAt',
+    deletedAt: 'deletedAt'
 };
 exports.SubscriptionPlanScalarFieldEnum = {
     id: 'id',
     subscriptionProductId: 'subscriptionProductId',
     title: 'title',
-    price: 'price',
+    description: 'description',
+    sellingPriceBDT: 'sellingPriceBDT',
+    costPriceBDT: 'costPriceBDT',
+    billingCycle: 'billingCycle',
     durationDays: 'durationDays',
     durationLabel: 'durationLabel',
+    maxDevices: 'maxDevices',
+    maxUsers: 'maxUsers',
+    screenCount: 'screenCount',
+    profileCount: 'profileCount',
+    accountType: 'accountType',
+    subscriptionTier: 'subscriptionTier',
+    features: 'features',
+    discountAmountBDT: 'discountAmountBDT',
+    discountPercent: 'discountPercent',
+    discountLabel: 'discountLabel',
     isPopular: 'isPopular',
-    stockQuantity: 'stockQuantity',
-    sortOrder: 'sortOrder',
     isActive: 'isActive',
+    sortOrder: 'sortOrder',
+    stockQuantity: 'stockQuantity',
     createdAt: 'createdAt',
     updatedAt: 'updatedAt'
 };
@@ -289,8 +352,9 @@ exports.SubscriptionInputFieldScalarFieldEnum = {
     helpText: 'helpText',
     isRequired: 'isRequired',
     options: 'options',
-    sortOrder: 'sortOrder',
+    validationRules: 'validationRules',
     isActive: 'isActive',
+    sortOrder: 'sortOrder',
     createdAt: 'createdAt',
     updatedAt: 'updatedAt'
 };
@@ -298,79 +362,95 @@ exports.ReviewScalarFieldEnum = {
     id: 'id',
     rating: 'rating',
     comment: 'comment',
-    createdAt: 'createdAt',
     userId: 'userId',
-    productId: 'productId'
+    productType: 'productType',
+    giftCardProductId: 'giftCardProductId',
+    gameTopUpProductId: 'gameTopUpProductId',
+    subscriptionProductId: 'subscriptionProductId',
+    createdAt: 'createdAt',
+    updatedAt: 'updatedAt'
 };
 exports.CartScalarFieldEnum = {
     id: 'id',
     userId: 'userId',
+    createdAt: 'createdAt',
     updatedAt: 'updatedAt'
 };
 exports.CartItemScalarFieldEnum = {
     id: 'id',
-    quantity: 'quantity',
-    customerInputs: 'customerInputs',
-    unitPrice: 'unitPrice',
-    createdAt: 'createdAt',
-    updatedAt: 'updatedAt',
     cartId: 'cartId',
-    productId: 'productId',
+    productType: 'productType',
+    quantity: 'quantity',
+    unitPrice: 'unitPrice',
+    customerInputs: 'customerInputs',
+    giftCardProductId: 'giftCardProductId',
     giftCardDenominationId: 'giftCardDenominationId',
+    gameTopUpProductId: 'gameTopUpProductId',
     gameTopUpPackageId: 'gameTopUpPackageId',
+    subscriptionProductId: 'subscriptionProductId',
     subscriptionPlanId: 'subscriptionPlanId',
-    optionKey: 'optionKey'
+    optionKey: 'optionKey',
+    createdAt: 'createdAt',
+    updatedAt: 'updatedAt'
 };
 exports.OrderScalarFieldEnum = {
     id: 'id',
     orderNumber: 'orderNumber',
+    notes: 'notes',
     subtotal: 'subtotal',
     discountTotal: 'discountTotal',
     totalCost: 'totalCost',
     status: 'status',
     paymentStatus: 'paymentStatus',
-    notes: 'notes',
-    createdAt: 'createdAt',
-    updatedAt: 'updatedAt',
     userId: 'userId',
-    addressId: 'addressId'
+    addressId: 'addressId',
+    createdAt: 'createdAt',
+    updatedAt: 'updatedAt'
 };
 exports.OrderItemScalarFieldEnum = {
     id: 'id',
-    price: 'price',
+    orderId: 'orderId',
+    productType: 'productType',
     quantity: 'quantity',
+    unitPrice: 'unitPrice',
     totalPrice: 'totalPrice',
     productTitle: 'productTitle',
-    productType: 'productType',
     optionTitle: 'optionTitle',
+    productImage: 'productImage',
     customerInputs: 'customerInputs',
     deliveryStatus: 'deliveryStatus',
     fulfillmentReference: 'fulfillmentReference',
+    fulfillmentData: 'fulfillmentData',
+    failureReason: 'failureReason',
     fulfilledAt: 'fulfilledAt',
-    createdAt: 'createdAt',
-    updatedAt: 'updatedAt',
-    orderId: 'orderId',
-    productId: 'productId',
+    giftCardProductId: 'giftCardProductId',
     giftCardDenominationId: 'giftCardDenominationId',
+    gameTopUpProductId: 'gameTopUpProductId',
     gameTopUpPackageId: 'gameTopUpPackageId',
-    subscriptionPlanId: 'subscriptionPlanId'
+    subscriptionProductId: 'subscriptionProductId',
+    subscriptionPlanId: 'subscriptionPlanId',
+    createdAt: 'createdAt',
+    updatedAt: 'updatedAt'
 };
 exports.PaymentScalarFieldEnum = {
     id: 'id',
+    orderId: 'orderId',
     paymentMethod: 'paymentMethod',
+    paymentProvider: 'paymentProvider',
     paymentStatus: 'paymentStatus',
+    paymentId: 'paymentId',
     transactionId: 'transactionId',
     providerPaymentId: 'providerPaymentId',
     merchantInvoiceNumber: 'merchantInvoiceNumber',
     payerAccount: 'payerAccount',
     amount: 'amount',
     currency: 'currency',
+    providerResponse: 'providerResponse',
     rawResponse: 'rawResponse',
     failureReason: 'failureReason',
-    createdAt: 'createdAt',
-    updatedAt: 'updatedAt',
     paidAt: 'paidAt',
-    orderId: 'orderId'
+    createdAt: 'createdAt',
+    updatedAt: 'updatedAt'
 };
 exports.AuditLogScalarFieldEnum = {
     id: 'id',

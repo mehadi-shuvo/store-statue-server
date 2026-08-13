@@ -14,10 +14,11 @@ const getAuthenticatedUserId = (req) => {
     return req.authUser.id;
 };
 const createReview = (0, catchAsync_1.default)(async (req, res) => {
-    const { productId, rating, comment } = req.body;
+    const { productId, productType, rating, comment } = req.body;
     const result = await review_service_1.reviewServices.createReview({
         userId: getAuthenticatedUserId(req),
         productId,
+        productType,
         rating,
         comment,
     });
@@ -29,7 +30,7 @@ const createReview = (0, catchAsync_1.default)(async (req, res) => {
 });
 const updateReview = (0, catchAsync_1.default)(async (req, res) => {
     const { id } = req.params;
-    const { payload } = req.body;
+    const payload = req.body.payload ?? req.body;
     const result = await review_service_1.reviewServices.updateReview(id, getAuthenticatedUserId(req), payload);
     res.status(200).json({
         success: true,

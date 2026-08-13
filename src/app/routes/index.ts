@@ -8,6 +8,8 @@ import { gameTopUpRouter } from "../../modules/game-top-up/game-top-up.route";
 import { giftCardRouter } from "../../modules/gift-card/gift-card.route";
 import { reviewRouter } from "../../modules/review/review.route";
 import { subscriptionRouter } from "../../modules/subscription/subscription.route";
+import { adminRouter } from "../../modules/admin/admin.route";
+import { paymentRouter } from "../../modules/payment/routes/payment.route";
 
 const router = Router();
 
@@ -15,6 +17,10 @@ const moduleRoutes: TModuleRoute[] = [
   {
     path: "/user",
     route: userRouter,
+  },
+  {
+    path: "/admins",
+    route: adminRouter,
   },
   {
     path: "/products",
@@ -43,6 +49,10 @@ const moduleRoutes: TModuleRoute[] = [
   {
     path: "/review",
     route: reviewRouter,
+  },
+  {
+    path: "/payments",
+    route: paymentRouter,
   },
 ];
 moduleRoutes.forEach((route) => router.use(route.path, route.route));

@@ -1,364 +1,284 @@
+import {
+  DigitalProductType,
+  ProductStatus,
+  type Prisma,
+} from "../../generated/prisma/client";
 import { ApiAppError } from "../../utils/apiAppError";
 import { prismaC } from "../../utils/prisma-client";
-import { ProductType, type Prisma } from "../../generated/prisma/client";
 
-/**
- * Get or Create Cart for User
- */
-const getOrCreateCart = async (userId: string) => {
-  let cart = await prismaC.cart.findUnique({
-    where: { userId },
-    include: {
-      items: {
-        include: {
-          product: true,
-          giftCardDenomination: true,
-          gameTopUpPackage: true,
-          subscriptionPlan: true,
-        },
-      },
-    },
-  });
+const cartItemInclude = {
+  giftCardProduct: true,
+  giftCardDenomination: true,
+  gameTopUpProduct: true,
+  gameTopUpPackage: true,
+  subscriptionProduct: true,
+  subscriptionPlan: true,
+} satisfies Prisma.CartItemInclude;
 
-  if (!cart) {
-    cart = await prismaC.cart.create({
-      data: { userId },
-      include: {
-        items: {
-          include: {
-            product: true,
-            giftCardDenomination: true,
-            gameTopUpPackage: true,
-            subscriptionPlan: true,
-          },
-        },
-      },
-    });
-  }
-
-  return cart;
-};
-
-/**
- * Add Item to Cart
- */
-const addToCart = async (payload: {
+type CartItemPayload = {
   userId: string;
   productId: string;
   giftCardDenominationId?: string;
   gameTopUpPackageId?: string;
   subscriptionPlanId?: string;
-  customerInputs?: Prisma.InputJsonValue;
-  quantity: number;
-}) => {
-  const {
-    userId,
-    productId,
-    giftCardDenominationId,
-    gameTopUpPackageId,
-    subscriptionPlanId,
-    customerInputs,
-    quantity,
-  } = payload;
-  const selectedOptionCount = [
-    giftCardDenominationId,
-    gameTopUpPackageId,
-    subscriptionPlanId,
-  ].filter(Boolean).length;
+};
 
-  if (selectedOptionCount > 1) {
-    throw new ApiAppError(400, "Only one product option can be selected");
+const getProductType = (payload: CartItemPayload) => {
+  const selectedOptions = [
+    payload.giftCardDenominationId,
+    payload.gameTopUpPackageId,
+    payload.subscriptionPlanId,
+  ].filter((value): value is string => Boolean(value));
+
+  if (!payload.productId || selectedOptions.length !== 1) {
+    throw new ApiAppError(
+      400,
+      "productId and exactly one digital product option are required",
+    );
   }
 
-  const optionKey = giftCardDenominationId
-    ? `gift-card:${giftCardDenominationId}`
-    : gameTopUpPackageId
-      ? `game-top-up:${gameTopUpPackageId}`
-      : subscriptionPlanId
-        ? `subscription:${subscriptionPlanId}`
-        : "default";
+  if (payload.giftCardDenominationId) return DigitalProductType.GIFT_CARD;
+  if (payload.gameTopUpPackageId) return DigitalProductType.GAME_TOP_UP;
+  return DigitalProductType.SUBSCRIPTION;
+};
 
-  if (quantity <= 0) {
-    throw new ApiAppError(400, "Quantity must be greater than 0");
+const getOptionKey = (payload: CartItemPayload) => {
+  if (payload.giftCardDenominationId) {
+    return `gift-card:${payload.giftCardDenominationId}`;
   }
+  if (payload.gameTopUpPackageId) {
+    return `game-top-up:${payload.gameTopUpPackageId}`;
+  }
+  return `subscription:${payload.subscriptionPlanId}`;
+};
 
-  const product = await prismaC.product.findUnique({
-    where: { id: productId },
+const itemMatchesProduct = (
+  item: {
+    giftCardProductId: string | null;
+    gameTopUpProductId: string | null;
+    subscriptionProductId: string | null;
+  },
+  productType: DigitalProductType,
+  productId: string,
+) => {
+  if (productType === DigitalProductType.GIFT_CARD) {
+    return item.giftCardProductId === productId;
+  }
+  if (productType === DigitalProductType.GAME_TOP_UP) {
+    return item.gameTopUpProductId === productId;
+  }
+  return item.subscriptionProductId === productId;
+};
+
+const getOrCreateCart = async (userId: string) => {
+  const existingCart = await prismaC.cart.findUnique({
+    where: { userId },
+    include: { items: { include: cartItemInclude } },
   });
 
-  if (!product || !product.isActive) {
-    throw new ApiAppError(404, "Product not found");
-  }
+  if (existingCart) return existingCart;
 
-  if (product.type === ProductType.PHYSICAL && selectedOptionCount > 0) {
-    throw new ApiAppError(400, "Physical products do not accept digital options");
-  }
+  return prismaC.cart.create({
+    data: { userId },
+    include: { items: { include: cartItemInclude } },
+  });
+};
 
-  if (product.type === ProductType.GIFT_CARD && !giftCardDenominationId) {
-    throw new ApiAppError(400, "Gift card denomination is required");
-  }
+const resolveProductOption = async (payload: CartItemPayload) => {
+  const productType = getProductType(payload);
 
-  if (product.type === ProductType.GAME_TOP_UP && !gameTopUpPackageId) {
-    throw new ApiAppError(400, "Game top-up package is required");
-  }
-
-  if (product.type === ProductType.SUBSCRIPTION && !subscriptionPlanId) {
-    throw new ApiAppError(400, "Subscription plan is required");
-  }
-
-  let unitPrice = product.price;
-  let stockQuantity: number | null = product.stockQuantity;
-
-  if (giftCardDenominationId) {
-    const denomination = await prismaC.giftCardDenomination.findFirst({
+  if (productType === DigitalProductType.GIFT_CARD) {
+    const option = await prismaC.giftCardDenomination.findFirst({
       where: {
-        id: giftCardDenominationId,
+        id: payload.giftCardDenominationId,
+        giftCardProductId: payload.productId,
         isActive: true,
-        giftCardProduct: { is: { productId } },
+        giftCardProduct: {
+          is: { status: ProductStatus.ACTIVE, deletedAt: null },
+        },
       },
     });
-
-    if (!denomination) {
-      throw new ApiAppError(404, "Gift card denomination not found");
-    }
-
-    unitPrice = denomination.bdtPrice;
-    stockQuantity = denomination.stockQuantity;
+    if (!option) throw new ApiAppError(404, "Gift card denomination not found");
+    return {
+      productType,
+      unitPrice: option.sellingPriceBDT,
+      stockQuantity: option.stockQuantity,
+    };
   }
 
-  if (gameTopUpPackageId) {
-    const topUpPackage = await prismaC.gameTopUpPackage.findFirst({
+  if (productType === DigitalProductType.GAME_TOP_UP) {
+    const option = await prismaC.gameTopUpPackage.findFirst({
       where: {
-        id: gameTopUpPackageId,
+        id: payload.gameTopUpPackageId,
+        gameTopUpProductId: payload.productId,
         isActive: true,
-        gameTopUpProduct: { is: { productId } },
+        gameTopUpProduct: {
+          is: { status: ProductStatus.ACTIVE, deletedAt: null },
+        },
       },
     });
-
-    if (!topUpPackage) {
-      throw new ApiAppError(404, "Game top-up package not found");
-    }
-
-    unitPrice = topUpPackage.price;
-    stockQuantity = topUpPackage.stockQuantity;
+    if (!option) throw new ApiAppError(404, "Game top-up package not found");
+    return {
+      productType,
+      unitPrice: option.sellingPriceBDT,
+      stockQuantity: option.stockQuantity,
+    };
   }
 
-  if (subscriptionPlanId) {
-    const subscriptionPlan = await prismaC.subscriptionPlan.findFirst({
-      where: {
-        id: subscriptionPlanId,
-        isActive: true,
-        subscriptionProduct: { is: { productId } },
+  const option = await prismaC.subscriptionPlan.findFirst({
+    where: {
+      id: payload.subscriptionPlanId,
+      subscriptionProductId: payload.productId,
+      isActive: true,
+      subscriptionProduct: {
+        is: { status: ProductStatus.ACTIVE, deletedAt: null },
       },
-    });
+    },
+  });
+  if (!option) throw new ApiAppError(404, "Subscription plan not found");
+  return {
+    productType,
+    unitPrice: option.sellingPriceBDT,
+    stockQuantity: option.stockQuantity,
+  };
+};
 
-    if (!subscriptionPlan) {
-      throw new ApiAppError(404, "Subscription plan not found");
-    }
-
-    unitPrice = subscriptionPlan.price;
-    stockQuantity = subscriptionPlan.stockQuantity;
+const addToCart = async (
+  payload: CartItemPayload & {
+    customerInputs?: Prisma.InputJsonValue;
+    quantity: number;
+  },
+) => {
+  if (!Number.isInteger(payload.quantity) || payload.quantity <= 0) {
+    throw new ApiAppError(400, "Quantity must be a positive integer");
   }
 
-  if (stockQuantity !== null && stockQuantity < quantity) {
+  const option = await resolveProductOption(payload);
+  if (option.stockQuantity !== null && option.stockQuantity < payload.quantity) {
     throw new ApiAppError(400, "Insufficient product stock");
   }
 
-  const cart = await getOrCreateCart(userId);
-
+  const cart = await getOrCreateCart(payload.userId);
+  const optionKey = getOptionKey(payload);
   const existingItem = await prismaC.cartItem.findUnique({
     where: {
-      cartId_productId_optionKey: {
+      cartId_productType_optionKey: {
         cartId: cart.id,
-        productId,
+        productType: option.productType,
         optionKey,
       },
     },
   });
 
   if (existingItem) {
-    const newQuantity = existingItem.quantity + quantity;
+    if (!itemMatchesProduct(existingItem, option.productType, payload.productId)) {
+      throw new ApiAppError(409, "Cart option conflicts with another product");
+    }
 
-    if (stockQuantity !== null && stockQuantity < newQuantity) {
+    const newQuantity = existingItem.quantity + payload.quantity;
+    if (option.stockQuantity !== null && option.stockQuantity < newQuantity) {
       throw new ApiAppError(400, "Stock limit exceeded");
     }
 
     return prismaC.cartItem.update({
       where: { id: existingItem.id },
-      data: { quantity: newQuantity, customerInputs },
+      data: {
+        quantity: newQuantity,
+        unitPrice: option.unitPrice,
+        ...(payload.customerInputs !== undefined
+          ? { customerInputs: payload.customerInputs }
+          : {}),
+      },
+      include: cartItemInclude,
     });
   }
 
   return prismaC.cartItem.create({
     data: {
       cartId: cart.id,
-      productId,
-      giftCardDenominationId,
-      gameTopUpPackageId,
-      subscriptionPlanId,
+      productType: option.productType,
       optionKey,
-      quantity,
-      customerInputs,
-      unitPrice,
+      quantity: payload.quantity,
+      unitPrice: option.unitPrice,
+      ...(payload.customerInputs !== undefined
+        ? { customerInputs: payload.customerInputs }
+        : {}),
+      ...(option.productType === DigitalProductType.GIFT_CARD
+        ? {
+            giftCardProductId: payload.productId,
+            giftCardDenominationId: payload.giftCardDenominationId,
+          }
+        : option.productType === DigitalProductType.GAME_TOP_UP
+          ? {
+              gameTopUpProductId: payload.productId,
+              gameTopUpPackageId: payload.gameTopUpPackageId,
+            }
+          : {
+              subscriptionProductId: payload.productId,
+              subscriptionPlanId: payload.subscriptionPlanId,
+            }),
     },
+    include: cartItemInclude,
   });
 };
 
-/**
- * Update Cart Item Quantity
- */
-const updateCartItem = async (payload: {
-  userId: string;
-  productId: string;
-  giftCardDenominationId?: string;
-  gameTopUpPackageId?: string;
-  subscriptionPlanId?: string;
-  quantity: number;
-}) => {
-  const {
-    userId,
-    productId,
-    giftCardDenominationId,
-    gameTopUpPackageId,
-    subscriptionPlanId,
-    quantity,
-  } = payload;
-  const optionKey = giftCardDenominationId
-    ? `gift-card:${giftCardDenominationId}`
-    : gameTopUpPackageId
-      ? `game-top-up:${gameTopUpPackageId}`
-      : subscriptionPlanId
-        ? `subscription:${subscriptionPlanId}`
-        : "default";
+const findCartItem = async (payload: CartItemPayload) => {
+  const productType = getProductType(payload);
+  const cart = await prismaC.cart.findUnique({ where: { userId: payload.userId } });
+  if (!cart) throw new ApiAppError(404, "Cart not found");
 
-  if (quantity < 0) {
-    throw new ApiAppError(400, "Quantity cannot be negative");
-  }
-
-  const cart = await prismaC.cart.findUnique({
-    where: { userId },
-  });
-
-  if (!cart) {
-    throw new ApiAppError(404, "Cart not found");
-  }
-
-  const cartItem = await prismaC.cartItem.findUnique({
+  const item = await prismaC.cartItem.findUnique({
     where: {
-      cartId_productId_optionKey: {
+      cartId_productType_optionKey: {
         cartId: cart.id,
-        productId,
-        optionKey,
+        productType,
+        optionKey: getOptionKey(payload),
       },
     },
-    include: {
-      product: true,
-      giftCardDenomination: true,
-      gameTopUpPackage: true,
-      subscriptionPlan: true,
-    },
+    include: cartItemInclude,
   });
 
-  if (!cartItem) {
+  if (!item || !itemMatchesProduct(item, productType, payload.productId)) {
     throw new ApiAppError(404, "Cart item not found");
   }
 
-  if (quantity === 0) {
-    return prismaC.cartItem.delete({
-      where: { id: cartItem.id },
-    });
+  return item;
+};
+
+const updateCartItem = async (
+  payload: CartItemPayload & { quantity: number },
+) => {
+  if (!Number.isInteger(payload.quantity) || payload.quantity < 0) {
+    throw new ApiAppError(400, "Quantity must be a non-negative integer");
   }
 
-  const stockQuantity = cartItem.giftCardDenomination
-    ? cartItem.giftCardDenomination.stockQuantity
-    : cartItem.gameTopUpPackage
-      ? cartItem.gameTopUpPackage.stockQuantity
-      : cartItem.subscriptionPlan
-        ? cartItem.subscriptionPlan.stockQuantity
-        : cartItem.product.stockQuantity;
+  const item = await findCartItem(payload);
+  if (payload.quantity === 0) {
+    return prismaC.cartItem.delete({ where: { id: item.id } });
+  }
 
-  if (
-    !cartItem.product.isActive ||
-    (stockQuantity !== null && stockQuantity < quantity)
-  ) {
+  const option = await resolveProductOption(payload);
+  if (option.stockQuantity !== null && option.stockQuantity < payload.quantity) {
     throw new ApiAppError(400, "Insufficient product stock");
   }
 
   return prismaC.cartItem.update({
-    where: { id: cartItem.id },
-    data: { quantity },
+    where: { id: item.id },
+    data: { quantity: payload.quantity, unitPrice: option.unitPrice },
+    include: cartItemInclude,
   });
 };
 
-/**
- * Remove Item from Cart
- */
-const removeFromCart = async (payload: {
-  userId: string;
-  productId: string;
-  giftCardDenominationId?: string;
-  gameTopUpPackageId?: string;
-  subscriptionPlanId?: string;
-}) => {
-  const {
-    userId,
-    productId,
-    giftCardDenominationId,
-    gameTopUpPackageId,
-    subscriptionPlanId,
-  } = payload;
-  const optionKey = giftCardDenominationId
-    ? `gift-card:${giftCardDenominationId}`
-    : gameTopUpPackageId
-      ? `game-top-up:${gameTopUpPackageId}`
-      : subscriptionPlanId
-        ? `subscription:${subscriptionPlanId}`
-        : "default";
-
-  const cart = await prismaC.cart.findUnique({
-    where: { userId },
-  });
-
-  if (!cart) {
-    throw new ApiAppError(404, "Cart not found");
-  }
-
-  const cartItem = await prismaC.cartItem.findUnique({
-    where: {
-      cartId_productId_optionKey: {
-        cartId: cart.id,
-        productId,
-        optionKey,
-      },
-    },
-  });
-
-  if (!cartItem) {
-    throw new ApiAppError(404, "Cart item not found");
-  }
-
-  return prismaC.cartItem.delete({
-    where: { id: cartItem.id },
-  });
+const removeFromCart = async (payload: CartItemPayload) => {
+  const item = await findCartItem(payload);
+  return prismaC.cartItem.delete({ where: { id: item.id } });
 };
 
-/**
- * Get Cart Details
- */
-const getCart = async (userId: string) => {
-  return getOrCreateCart(userId);
-};
+const getCart = async (userId: string) => getOrCreateCart(userId);
 
-/**
- * Clear Cart
- */
 const clearCart = async (userId: string) => {
   const cart = await getOrCreateCart(userId);
-
-  await prismaC.cartItem.deleteMany({
-    where: { cartId: cart.id },
-  });
-
+  await prismaC.cartItem.deleteMany({ where: { cartId: cart.id } });
   return { message: "Cart cleared successfully" };
 };
 

@@ -82,11 +82,19 @@ const deleteCustomerProfile = (0, catchAsync_1.default)(async (req, res) => {
 });
 /* ========== FORGOT PASSWORD ========== */
 const forgotPassword = (0, catchAsync_1.default)(async (req, res) => {
-    const { email } = req.body;
+    const { email } = (0, user_validation_1.parseRequestBody)(user_validation_1.forgotPasswordSchema, req.body);
     const result = await user_service_1.userService.forgotPassword(email);
     res.status(200).json({
         success: true,
         message: result.message,
+    });
+});
+const resetPassword = (0, catchAsync_1.default)(async (req, res) => {
+    const payload = (0, user_validation_1.parseRequestBody)(user_validation_1.resetPasswordSchema, req.body);
+    await user_service_1.userService.resetPassword(payload);
+    res.status(200).json({
+        success: true,
+        message: "Password reset successfully",
     });
 });
 const getUsers = (0, catchAsync_1.default)(async (req, res) => {
@@ -105,5 +113,6 @@ exports.userController = {
     updateCustomerProfile,
     deleteCustomerProfile,
     forgotPassword,
+    resetPassword,
     getUsers,
 };

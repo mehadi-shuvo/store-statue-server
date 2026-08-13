@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   postgres:
     image: postgres:latest
@@ -8,11 +6,18 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
-      POSTGRES_DB: expressdb
+      POSTGRES_DB: ontor
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
+
+  redis:
+    image: redis:7-alpine
+    container_name: game-express-redis
+    restart: always
+    ports:
+      - "6379:6379"
 
 volumes:
   postgres_data:

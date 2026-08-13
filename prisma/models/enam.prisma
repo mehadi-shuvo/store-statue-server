@@ -2,50 +2,32 @@
 // ENUMS
 //////////////////////////////////////////////////
 
-enum OrderStatus {
-  PENDING
-  CONFIRMED
-  PROCESSING
-  COMPLETED
-  DELIVERED
-  RECEIVED
-  CANCELLED
-  REFUNDED
-}
-
-enum PaymentStatus {
-  PENDING
-  PROCESSING
-  PAID
-  FAILED
-  CANCELLED
-  REFUNDED
-}
-
-enum PaymentMethod {
-  BKASH
-  SSL_COMMERZ
-  CARD
-  MOBILE_BANKING
-  CASH_ON_DELIVERY
-}
-
-enum OtpType {
-  PAYMENT
-  AUTHENTICATION
-}
-
 enum UserRole {
   CUSTOMER
   ADMIN
   SUPER_ADMIN
+  STAFF
 }
 
-enum ProductType {
-  PHYSICAL
+enum OtpType {
+  EMAIL_VERIFICATION
+  PHONE_VERIFICATION
+  PASSWORD_RESET
+  LOGIN
+}
+
+enum DigitalProductType {
   GIFT_CARD
   GAME_TOP_UP
   SUBSCRIPTION
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  OUT_OF_STOCK
+  ARCHIVED
 }
 
 enum ProductInputType {
@@ -54,13 +36,98 @@ enum ProductInputType {
   EMAIL
   PHONE
   SELECT
+  RADIO
+  TEXTAREA
+}
+
+enum GiftCardDeliveryType {
+  CODE
+  LINK
+  MANUAL
+  ACCOUNT_RECHARGE
+}
+
+enum GiftCardRegion {
+  GLOBAL
+  USA
+  UK
+  CANADA
+  EUROPE
+  AUSTRALIA
+  INDIA
+  BANGLADESH
+  SINGAPORE
+  JAPAN
+  UAE
+  OTHER
+}
+
+enum GameTopUpFulfillmentType {
+  PLAYER_ID
+  PLAYER_ID_AND_SERVER
+  EMAIL
+  PHONE
+  LOGIN_CREDENTIALS
+  REDEEM_CODE
+  MANUAL
+}
+
+enum SubscriptionDeliveryType {
+  ACCOUNT_CREDENTIALS
+  CUSTOMER_ACCOUNT_ACTIVATION
+  FAMILY_INVITATION
+  REDEEM_CODE
+  LICENSE_KEY
+  MANUAL
+}
+
+enum SubscriptionBillingCycle {
+  DAILY
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  HALF_YEARLY
+  YEARLY
+  LIFETIME
+  CUSTOM
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  COMPLETED
+  CANCELLED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  INITIATED
+  PROCESSING
+  PAID
+  FAILED
+  CANCELLED
+  REFUNDED
+  PARTIALLY_REFUNDED
 }
 
 enum DeliveryStatus {
-  NOT_REQUIRED
   PENDING
   PROCESSING
   DELIVERED
   FAILED
+  CANCELLED
   REFUNDED
+}
+
+enum PaymentMethod {
+  BKASH
+  NAGAD
+  ROCKET
+  CARD
+  BANK_TRANSFER
+  CASH
+  MANUAL
 }

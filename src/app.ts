@@ -1,48 +1,73 @@
 import express, { Express, Request, Response } from "express";
-import cors from "cors";
 import router from "./app/routes";
 
 import cookieParser from "cookie-parser";
-import { ENV } from "./utils/env-config";
 import { globalErrorHandler } from "./middlewares/globalErrorHandler";
+import { applyHttpSecurity, hppProtection } from "./middlewares/security.middleware";
+import {
+  burstRateLimiter,
+  publicApiRateLimiter,
+} from "./middlewares/rate-limit.middleware";
+import { requestSlowDown } from "./middlewares/slow-down.middleware";
+import {
+  requestAbortLogger,
+  requestSizeAndUrlGuard,
+  suspiciousRequestMiddleware,
+  temporaryIpBlockMiddleware,
+} from "./middlewares/threat-protection.middleware";
+import { httpLogger } from "./utils/logger";
+import { securityConfig } from "./config/security.config";
 
 const app: Express = express();
 
-app.set("trust proxy", 1);
+app.set("etag", false);
 
-const normalizeOrigin = (origin: string) => origin.replace(/\/+$/, "");
+applyHttpSecurity(app);
 
-const allowedOrigins = [
-  ENV.CLIENT_URL,
-  "https://store-statue-client.vercel.app",
-  "http://localhost:3000",
-].filter(Boolean).map(normalizeOrigin);
+app.use("/api", (_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  next();
+});
 
-app.use(express.json());
+app.use(httpLogger);
+app.use(requestAbortLogger);
+app.use(temporaryIpBlockMiddleware);
+app.use(requestSizeAndUrlGuard);
+app.use(publicApiRateLimiter);
+app.use(burstRateLimiter);
+app.use(requestSlowDown);
+app.use((req, res, next) => {
+  req.setTimeout(securityConfig.requestTimeoutMs);
+  res.setTimeout(securityConfig.requestTimeoutMs);
+  next();
+});
+app.use(express.json({ limit: securityConfig.jsonBodyLimit }));
 app.use(
-  cors({
-    origin: (origin, callback) => {
-      if (!origin) {
-        return callback(null, true);
-      }
-
-      const normalizedOrigin = normalizeOrigin(origin);
-
-      if (allowedOrigins.includes(normalizedOrigin)) {
-        return callback(null, true);
-      }
-
-      return callback(new Error(`Origin ${origin} is not allowed by CORS`));
-    },
-    credentials: true,
+  express.urlencoded({
+    extended: true,
+    limit: securityConfig.urlEncodedBodyLimit,
+    parameterLimit: 100,
   }),
 );
 app.use(cookieParser());
+app.use(hppProtection);
+app.use(suspiciousRequestMiddleware);
 
 app.use("/api", router);
+app.use("/api/v1", router);
 
 app.get("/", (req: Request, res: Response) => {
   res.send(`game express server is running ...`);
+});
+
+app.use((req: Request, res: Response) => {
+  res.status(404).json({
+    success: false,
+    statusCode: 404,
+    message: `Route ${req.method} ${req.originalUrl} was not found.`,
+  });
 });
 
 app.use(globalErrorHandler);

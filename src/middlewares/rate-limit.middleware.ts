@@ -1,60 +1,128 @@
-import { NextFunction, Request, Response } from "express";
-import { ApiAppError } from "../utils/apiAppError";
+import { Request, RequestHandler, Response } from "express";
+import { ipKeyGenerator, rateLimit } from "express-rate-limit";
+import { RedisStore } from "rate-limit-redis";
+import { createClient } from "redis";
+import { securityConfig } from "../config/security.config";
+import { logger } from "../utils/logger";
+import { registerAbusiveClient } from "./threat-protection.middleware";
 
 type RateLimitOptions = {
   windowMs: number;
-  max: number;
+  limit?: number;
+  max?: number;
   message: string;
   keyPrefix: string;
+  keyByUser?: boolean;
 };
 
-type AttemptState = {
-  count: number;
-  resetAt: number;
-};
+let redisClient: ReturnType<typeof createClient> | null = null;
+let redisConnectStarted = false;
 
-const attempts = new Map<string, AttemptState>();
-let requestCount = 0;
-
-const sweepExpiredAttempts = (now: number) => {
-  for (const [key, value] of attempts.entries()) {
-    if (value.resetAt <= now) {
-      attempts.delete(key);
-    }
+const getRedisClient = () => {
+  if (!securityConfig.redisUrl) {
+    return null;
   }
+
+  if (!redisClient) {
+    redisClient = createClient({ url: securityConfig.redisUrl });
+    redisClient.on("error", (error) => {
+      logger.error({ error }, "Redis rate-limit client error");
+    });
+  }
+
+  if (!redisConnectStarted) {
+    redisConnectStarted = true;
+    redisClient.connect().catch((error) => {
+      logger.error({ error }, "Failed to connect Redis rate-limit client");
+    });
+  }
+
+  return redisClient;
 };
 
-const getClientKey = (req: Request, keyPrefix: string) => {
-  const clientIp = req.ip || req.socket.remoteAddress || "unknown";
+const createRedisStore = (prefix: string) => {
+  const client = getRedisClient();
 
-  return `${keyPrefix}:${clientIp}`;
+  if (!client) {
+    return undefined;
+  }
+
+  return new RedisStore({
+    prefix: `${prefix}:`,
+    sendCommand: (...args: string[]) => client.sendCommand(args),
+  });
 };
 
-export const createRateLimiter =
-  ({ windowMs, max, message, keyPrefix }: RateLimitOptions) =>
-  (req: Request, res: Response, next: NextFunction) => {
-    const now = Date.now();
-    requestCount += 1;
+const sendRateLimitResponse = (
+  req: Request,
+  res: Response,
+  message: string,
+) => {
+  registerAbusiveClient(req, "rate_limit");
+  logger.warn(
+    {
+      ip: req.ip,
+      path: req.originalUrl,
+      method: req.method,
+      authUserId: req.authUser?.id,
+    },
+    "Rate limit exceeded",
+  );
 
-    if (requestCount % 100 === 0) {
-      sweepExpiredAttempts(now);
-    }
+  return res.status(429).json({
+    success: false,
+    statusCode: 429,
+    message,
+  });
+};
 
-    const key = getClientKey(req, keyPrefix);
-    const state = attempts.get(key);
+const getIpKey = (req: Request) => ipKeyGenerator(req.ip || "unknown");
 
-    if (!state || state.resetAt <= now) {
-      attempts.set(key, { count: 1, resetAt: now + windowMs });
-      return next();
-    }
+const getUserAwareKey = (req: Request) => {
+  if (req.authUser?.id) {
+    return `user:${req.authUser.id}`;
+  }
 
-    state.count += 1;
+  return `ip:${getIpKey(req)}`;
+};
 
-    if (state.count > max) {
-      const retryAfterSeconds = Math.ceil((state.resetAt - now) / 1000);
-      res.setHeader("Retry-After", retryAfterSeconds);
-      return next(new ApiAppError(429, message));
-    }
+export const createRateLimiter = ({
+  windowMs,
+  limit,
+  max,
+  message,
+  keyPrefix,
+  keyByUser = false,
+}: RateLimitOptions): RequestHandler =>
+  rateLimit({
+    windowMs,
+    limit: limit ?? max ?? 100,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    passOnStoreError: true,
+    store: createRedisStore(keyPrefix),
+    keyGenerator: keyByUser ? getUserAwareKey : getIpKey,
+    handler: (req, res) => sendRateLimitResponse(req, res, message),
+  });
 
-    return next();
-  };
+export const publicApiRateLimiter = createRateLimiter(securityConfig.rateLimits.public);
+export const loginRateLimiter = createRateLimiter(securityConfig.rateLimits.login);
+export const registerRateLimiter = createRateLimiter(securityConfig.rateLimits.register);
+export const forgotPasswordRateLimiter = createRateLimiter(
+  securityConfig.rateLimits.forgotPassword,
+);
+export const otpVerifyRateLimiter = createRateLimiter(securityConfig.rateLimits.otpVerify);
+export const resendOtpRateLimiter = createRateLimiter(securityConfig.rateLimits.resendOtp);
+export const authenticatedUserRateLimiter = createRateLimiter({
+  ...securityConfig.rateLimits.authenticatedUser,
+  keyByUser: true,
+});
+export const adminRateLimiter = createRateLimiter({
+  ...securityConfig.rateLimits.admin,
+  keyByUser: true,
+});
+export const uploadRateLimiter = createRateLimiter({
+  ...securityConfig.rateLimits.upload,
+  keyByUser: true,
+});
+export const burstRateLimiter = createRateLimiter(securityConfig.burstProtection);

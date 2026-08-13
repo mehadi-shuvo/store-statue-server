@@ -1,213 +1,214 @@
-import { ProductType } from "../../generated/prisma/client";
+import { ProductStatus } from "../../generated/prisma/client";
 import { ApiAppError } from "../../utils/apiAppError";
 import { prismaC } from "../../utils/prisma-client";
-import { productServices } from "../products/product.service";
 
-type GiftCardAmount = {
-  BDT?: number;
-  bdtPrice?: number;
-  cardUSD?: number;
-  cardValue?: number;
-  popular?: boolean;
-  isPopular?: boolean;
+type Query = {
+  page?: string;
+  limit?: string;
+  search?: string;
+  categoryId?: string;
+  status?: string;
+  isFeatured?: string;
+};
+
+type DenominationPayload = {
   title?: string;
-  stockQuantity?: number;
-  sortOrder?: number;
-  isActive?: boolean;
-};
-
-type GiftCardPayload = {
-  title: string;
-  slug?: string;
-  brand: string;
-  description?: string;
-  subHeading?: string;
-  image?: string;
-  photos?: string[];
-  thumbnail?: string;
-  bannerImage?: string;
-  currency?: string;
+  sellingPriceBDT?: number;
+  bdtPrice?: number;
+  BDT?: number;
+  cardValue?: number;
+  cardUSD?: number;
   cardCurrency?: string;
-  categoryId: string;
-  price?: number;
-  stockQuantity?: number;
-  offerPercent?: number;
-  features?: string[];
+  costPriceBDT?: number;
+  discountAmountBDT?: number;
+  discountPercent?: number;
+  discountLabel?: string;
+  isPopular?: boolean;
+  popular?: boolean;
+  isActive?: boolean;
   sortOrder?: number;
-  amounts?: GiftCardAmount[];
-  denominations?: GiftCardAmount[];
+  stockQuantity?: number | null;
 };
 
-const getCardCurrency = (payload: GiftCardPayload) => {
-  if (payload.cardCurrency) {
-    return payload.cardCurrency;
-  }
+type GiftCardPayload = Record<string, any> & {
+  denominations?: DenominationPayload[];
+  amounts?: DenominationPayload[];
+};
 
-  if (payload.currency === "$") {
-    return "USD";
-  }
+const include = {
+  category: { select: { id: true, title: true, slug: true } },
+  denominations: { orderBy: { sortOrder: "asc" as const } },
+};
 
-  return payload.currency || "USD";
+const positiveNumber = (value: unknown, field: string) => {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) {
+    throw new ApiAppError(400, `${field} must be greater than 0`);
+  }
+  return number;
+};
+
+const stockValue = (value: unknown, field: string) => {
+  if (value === undefined || value === null) return value as undefined | null;
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < 0) {
+    throw new ApiAppError(400, `${field} must be a non-negative integer or null`);
+  }
+  return number;
 };
 
 const normalizeDenominations = (payload: GiftCardPayload) => {
-  const source = payload.denominations || payload.amounts || [];
-
-  if (!Array.isArray(source) || source.length === 0) {
-    throw new ApiAppError(400, "Gift card amounts are required");
+  const values = payload.denominations ?? payload.amounts;
+  if (!Array.isArray(values) || values.length === 0) {
+    throw new ApiAppError(400, "Gift card denominations are required");
   }
 
-  const cardCurrency = getCardCurrency(payload);
-
-  return source.map((amount, index) => {
-    const bdtPrice = amount.bdtPrice ?? amount.BDT;
-    const cardValue = amount.cardValue ?? amount.cardUSD;
-
-    if (!bdtPrice || !cardValue) {
+  return values.map((item, index) => {
+    const sellingPriceBDT = item.sellingPriceBDT ?? item.bdtPrice ?? item.BDT;
+    const cardValue = item.cardValue ?? item.cardUSD;
+    if (sellingPriceBDT == null || cardValue == null) {
       throw new ApiAppError(
         400,
-        `Gift card amount at index ${index} must include BDT and card value`,
+        `Denomination at index ${index} requires sellingPriceBDT and cardValue`,
       );
     }
-
+    const discountPercent = item.discountPercent;
+    if (
+      discountPercent !== undefined &&
+      (!Number.isFinite(Number(discountPercent)) ||
+        Number(discountPercent) < 0 ||
+        Number(discountPercent) > 100)
+    ) {
+      throw new ApiAppError(400, `discountPercent at index ${index} must be 0-100`);
+    }
     return {
-      title: amount.title || `${cardCurrency} ${cardValue}`,
-      bdtPrice,
-      cardValue,
-      cardCurrency,
-      isPopular: amount.isPopular ?? amount.popular ?? false,
-      stockQuantity: amount.stockQuantity,
-      sortOrder: amount.sortOrder ?? index,
-      isActive: amount.isActive ?? true,
+      title: item.title,
+      sellingPriceBDT: positiveNumber(sellingPriceBDT, `sellingPriceBDT at index ${index}`),
+      cardValue: positiveNumber(cardValue, `cardValue at index ${index}`),
+      cardCurrency: item.cardCurrency ?? payload.cardCurrency ?? "USD",
+      costPriceBDT: item.costPriceBDT,
+      discountAmountBDT: item.discountAmountBDT,
+      discountPercent: item.discountPercent,
+      discountLabel: item.discountLabel,
+      isPopular: item.isPopular ?? item.popular ?? false,
+      isActive: item.isActive ?? true,
+      sortOrder: item.sortOrder ?? index,
+      stockQuantity: stockValue(item.stockQuantity, `stockQuantity at index ${index}`),
     };
   });
 };
 
-const buildProductPayload = (payload: GiftCardPayload) => {
-  const denominations = normalizeDenominations(payload);
-  const lowestPrice = Math.min(...denominations.map((amount) => amount.bdtPrice));
-  const image = payload.thumbnail || payload.image;
+const productData = (payload: GiftCardPayload, userId?: string) => ({
+  ...(payload.brand !== undefined && { brand: payload.brand }),
+  ...(payload.title !== undefined && { title: payload.title }),
+  ...(payload.slug !== undefined && { slug: payload.slug }),
+  ...(payload.description !== undefined && { description: payload.description }),
+  ...(payload.image !== undefined && { image: payload.image }),
+  ...(payload.thumbnail !== undefined && { image: payload.thumbnail }),
+  ...(payload.bannerImage !== undefined && { bannerImage: payload.bannerImage }),
+  ...(payload.cardCurrency !== undefined && { cardCurrency: payload.cardCurrency }),
+  ...(payload.region !== undefined && { region: payload.region }),
+  ...(payload.deliveryType !== undefined && { deliveryType: payload.deliveryType }),
+  ...(payload.instructions !== undefined && { instructions: payload.instructions }),
+  ...(payload.termsAndConditions !== undefined && {
+    termsAndConditions: payload.termsAndConditions,
+  }),
+  ...(payload.status !== undefined && { status: payload.status }),
+  ...(payload.isFeatured !== undefined && { isFeatured: payload.isFeatured }),
+  ...(payload.sortOrder !== undefined && { sortOrder: payload.sortOrder }),
+  ...(payload.categoryId !== undefined && { categoryId: payload.categoryId }),
+  ...(userId && { updatedById: userId }),
+});
 
-  return {
-    title: payload.title,
-    slug: payload.slug,
-    description: payload.description,
-    subHeading: payload.subHeading,
-    brand: payload.brand,
-    type: ProductType.GIFT_CARD,
-    price: payload.price ?? lowestPrice,
-    stockQuantity: payload.stockQuantity ?? 999999,
-    categoryId: payload.categoryId,
-    offerPercent: payload.offerPercent,
-    photos: payload.photos || (image ? [image] : []),
-    thumbnail: image,
-    bannerImage: payload.bannerImage,
-    features: payload.features,
-    currency: "BDT",
-    sortOrder: payload.sortOrder,
-    giftCard: {
-      brand: payload.brand,
-      cardCurrency: getCardCurrency(payload),
-      denominations,
-    },
-  };
-};
-
-const getGiftCards = async (query: { page?: string; limit?: string }) => {
+const getGiftCards = async (query: Query) => {
   const page = Math.max(Number(query.page) || 1, 1);
-  const limit = Math.min(Number(query.limit) || 12, 100);
-  const skip = (page - 1) * limit;
-
-  const where = {
-    type: ProductType.GIFT_CARD,
-    isActive: true,
-  };
-
-  const [products, total] = await prismaC.$transaction([
-    prismaC.product.findMany({
-      where,
-      skip,
-      take: limit,
-      orderBy: { createdAt: "desc" },
-      include: {
-        category: { select: { id: true, title: true } },
-        giftCard: {
-          include: {
-            denominations: {
-              where: { isActive: true },
-              orderBy: { sortOrder: "asc" },
-            },
-          },
-        },
-      },
-    }),
-    prismaC.product.count({ where }),
-  ]);
-
-  return {
-    meta: {
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    },
-    data: products,
-  };
-};
-
-const getGiftCardById = async (id: string) => {
-  const product = await prismaC.product.findFirst({
-    where: {
-      id,
-      type: ProductType.GIFT_CARD,
-      isActive: true,
-    },
-    include: {
-      category: { select: { id: true, title: true } },
-      giftCard: {
-        include: {
-          denominations: {
-            where: { isActive: true },
-            orderBy: { sortOrder: "asc" },
-          },
-        },
-      },
-    },
-  });
-
-  if (!product) {
-    throw new ApiAppError(404, "Gift card not found");
+  const limit = Math.min(Math.max(Number(query.limit) || 12, 1), 100);
+  if (query.status && !Object.values(ProductStatus).includes(query.status as ProductStatus)) {
+    throw new ApiAppError(400, "Invalid product status");
   }
-
-  return product;
+  const where: any = {
+    deletedAt: null,
+    status: query.status ?? "ACTIVE",
+    ...(query.categoryId && { categoryId: query.categoryId }),
+    ...(query.isFeatured !== undefined && {
+      isFeatured: query.isFeatured === "true",
+    }),
+    ...(query.search && {
+      OR: ["title", "brand", "slug"].map((field) => ({
+        [field]: { contains: query.search, mode: "insensitive" },
+      })),
+    }),
+  };
+  const [data, total] = await prismaC.$transaction([
+    prismaC.giftCardProduct.findMany({
+      where,
+      skip: (page - 1) * limit,
+      take: limit,
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
+      include,
+    }),
+    prismaC.giftCardProduct.count({ where }),
+  ]);
+  return { meta: { total, page, limit, totalPages: Math.ceil(total / limit) }, data };
 };
 
-const createGiftCard = async (payload: GiftCardPayload, adminUserId?: string) => {
-  return productServices.addProduct(buildProductPayload(payload), adminUserId);
+const getGiftCardById = async (id: string, includeInactive = false) => {
+  const result = await prismaC.giftCardProduct.findFirst({
+    where: {
+      OR: [{ id }, { slug: id }],
+      deletedAt: null,
+      ...(includeInactive ? {} : { status: ProductStatus.ACTIVE }),
+    },
+    include,
+  });
+  if (!result) throw new ApiAppError(404, "Gift card not found");
+  return result;
 };
 
-const updateGiftCard = async (
-  id: string,
-  payload: Partial<GiftCardPayload>,
-  adminUserId?: string,
-) => {
-  await getGiftCardById(id);
+const createGiftCard = async (payload: GiftCardPayload, userId?: string) => {
+  const denominations = normalizeDenominations(payload);
+  if (!payload.brand || !payload.title || !payload.slug) {
+    throw new ApiAppError(400, "brand, title and slug are required");
+  }
+  const image = payload.image ?? payload.thumbnail;
+  if (!image) throw new ApiAppError(400, "image is required");
 
-  const productPayload =
-    payload.amounts || payload.denominations
-      ? buildProductPayload(payload as GiftCardPayload)
-      : {
-          ...payload,
-          type: ProductType.GIFT_CARD,
-          brand: payload.brand,
-        };
+  return prismaC.giftCardProduct.create({
+    data: {
+      ...productData(payload),
+      brand: payload.brand,
+      title: payload.title,
+      slug: payload.slug,
+      image,
+      ...(userId && { createdById: userId, updatedById: userId }),
+      denominations: { create: denominations },
+    },
+    include,
+  });
+};
 
-  return productServices.updateProduct(id, productPayload, adminUserId);
+const updateGiftCard = async (id: string, payload: GiftCardPayload, userId?: string) => {
+  const existing = await getGiftCardById(id, true);
+  const denominations =
+    payload.denominations || payload.amounts ? normalizeDenominations(payload) : undefined;
+  return prismaC.giftCardProduct.update({
+    where: { id: existing.id },
+    data: {
+      ...productData(payload, userId),
+      ...(denominations && {
+        denominations: { deleteMany: {}, create: denominations },
+      }),
+    },
+    include,
+  });
 };
 
 const deleteGiftCard = async (id: string) => {
-  await getGiftCardById(id);
-  return productServices.deleteProduct(id);
+  const existing = await getGiftCardById(id, true);
+  return prismaC.giftCardProduct.update({
+    where: { id: existing.id },
+    data: { status: "ARCHIVED", deletedAt: new Date() },
+  });
 };
 
 export const giftCardServices = {

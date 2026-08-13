@@ -1,0 +1,11 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.isRecord = exports.createInvoiceNumber = exports.amountsMatch = exports.toNumberAmount = void 0;
+const toNumberAmount = (value) => Number(value.toString());
+exports.toNumberAmount = toNumberAmount;
+const amountsMatch = (left, right) => Math.abs((0, exports.toNumberAmount)(left) - (0, exports.toNumberAmount)(right)) < 0.01;
+exports.amountsMatch = amountsMatch;
+const createInvoiceNumber = (orderId) => `INV-${orderId.slice(0, 8)}-${Date.now()}`;
+exports.createInvoiceNumber = createInvoiceNumber;
+const isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
+exports.isRecord = isRecord;

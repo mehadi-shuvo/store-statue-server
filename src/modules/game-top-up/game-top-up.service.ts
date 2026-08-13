@@ -1,237 +1,215 @@
-import { ProductType } from "../../generated/prisma/client";
+import { ProductStatus } from "../../generated/prisma/client";
 import { ApiAppError } from "../../utils/apiAppError";
 import { prismaC } from "../../utils/prisma-client";
-import { productServices } from "../products/product.service";
 
-type TopUpAmount = {
-  realCurrency?: number;
-  price?: number;
-  gameCurrency?: number;
-  gameCurrencyAmount?: number;
-  popular?: boolean;
-  isPopular?: boolean;
-  title?: string;
-  stockQuantity?: number;
-  sortOrder?: number;
-  isActive?: boolean;
+type Payload = Record<string, any>;
+type Query = Record<string, any>;
+
+const include = {
+  category: { select: { id: true, title: true, slug: true } },
+  packages: { orderBy: { sortOrder: "asc" as const } },
+  inputFields: { orderBy: { sortOrder: "asc" as const } },
 };
 
-type InputFieldPayload = {
-  name: string;
-  label: string;
-  type?: "TEXT" | "NUMBER" | "EMAIL" | "PHONE" | "SELECT";
-  placeholder?: string;
-  helpText?: string;
-  isRequired?: boolean;
-  options?: unknown;
-  sortOrder?: number;
-  isActive?: boolean;
+const positiveNumber = (value: unknown, field: string) => {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) {
+    throw new ApiAppError(400, `${field} must be greater than 0`);
+  }
+  return number;
 };
 
-type GameTopUpPayload = {
-  title?: string;
-  name?: string;
-  slug?: string;
-  description?: string;
-  subHeading?: string;
-  logo?: string;
-  image?: string;
-  banner?: string;
-  photos?: string[];
-  categoryId: string;
-  price?: number;
-  stockQuantity?: number;
-  offerPercent?: number;
-  features?: string[];
-  sortOrder?: number;
-  gameCurrencyName: string;
-  instructions?: string;
-  topUpAmounts?: TopUpAmount[];
-  packages?: TopUpAmount[];
-  inputFields?: InputFieldPayload[];
+const nonNegativeInteger = (value: unknown, field: string): number => {
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < 0) {
+    throw new ApiAppError(400, `${field} must be a non-negative integer`);
+  }
+  return number;
 };
 
-const normalizePackages = (payload: GameTopUpPayload) => {
-  const source = payload.packages || payload.topUpAmounts || [];
+const optionalNonNegativeInteger = (
+  value: unknown,
+  field: string,
+): number | null | undefined => {
+  if (value === undefined || value === null) return value;
+  return nonNegativeInteger(value, field);
+};
 
-  if (!Array.isArray(source) || source.length === 0) {
+const packagesFrom = (payload: Payload) => {
+  const values = payload.packages ?? payload.topUpAmounts;
+  if (!Array.isArray(values) || values.length === 0) {
     throw new ApiAppError(400, "Top-up packages are required");
   }
-
-  return source.map((amount, index) => {
-    const price = amount.price ?? amount.realCurrency;
-    const gameCurrencyAmount =
-      amount.gameCurrencyAmount ?? amount.gameCurrency;
-
-    if (!price || !gameCurrencyAmount) {
+  return values.map((item: any, index: number) => {
+    const sellingPriceBDT = item.sellingPriceBDT ?? item.price ?? item.realCurrency;
+    const gameCurrencyAmount = item.gameCurrencyAmount ?? item.gameCurrency;
+    if (sellingPriceBDT == null || gameCurrencyAmount == null) {
       throw new ApiAppError(
         400,
-        `Top-up amount at index ${index} must include price and game currency`,
+        `Package at index ${index} requires sellingPriceBDT and gameCurrencyAmount`,
       );
     }
-
-    return {
-      title: amount.title || `${gameCurrencyAmount} ${payload.gameCurrencyName}`,
-      price,
+    const normalizedCurrencyAmount = positiveNumber(
       gameCurrencyAmount,
-      isPopular: amount.isPopular ?? amount.popular ?? false,
-      stockQuantity: amount.stockQuantity,
-      sortOrder: amount.sortOrder ?? index,
-      isActive: amount.isActive ?? true,
+      `gameCurrencyAmount at index ${index}`,
+    );
+    if (!Number.isInteger(normalizedCurrencyAmount)) {
+      throw new ApiAppError(400, `gameCurrencyAmount at index ${index} must be an integer`);
+    }
+    return {
+      title: item.title,
+      sellingPriceBDT: positiveNumber(sellingPriceBDT, `sellingPriceBDT at index ${index}`),
+      gameCurrencyAmount: normalizedCurrencyAmount,
+      bonusCurrencyAmount: nonNegativeInteger(
+        item.bonusCurrencyAmount ?? 0,
+        `bonusCurrencyAmount at index ${index}`,
+      ),
+      costPriceBDT: item.costPriceBDT,
+      discountAmountBDT: item.discountAmountBDT,
+      discountPercent: item.discountPercent,
+      discountLabel: item.discountLabel,
+      isPopular: item.isPopular ?? item.popular ?? false,
+      isActive: item.isActive ?? true,
+      sortOrder: item.sortOrder ?? index,
+      stockQuantity: optionalNonNegativeInteger(
+        item.stockQuantity,
+        `stockQuantity at index ${index}`,
+      ),
     };
   });
 };
 
-const buildProductPayload = (payload: GameTopUpPayload) => {
-  const packages = normalizePackages(payload);
-  const lowestPrice = Math.min(...packages.map((amount) => amount.price));
-  const title = payload.title || payload.name;
-  const image = payload.logo || payload.image;
+const inputFieldsFrom = (values: any[] = []) =>
+  values.map((item, index) => ({
+    name: item.name,
+    label: item.label,
+    type: item.type ?? "TEXT",
+    placeholder: item.placeholder,
+    helpText: item.helpText,
+    isRequired: item.isRequired ?? true,
+    options: item.options,
+    validationRules: item.validationRules,
+    isActive: item.isActive ?? true,
+    sortOrder: item.sortOrder ?? index,
+  }));
 
-  if (!title) {
-    throw new ApiAppError(400, "Top-up title or name is required");
-  }
+const productData = (p: Payload, userId?: string) => ({
+  ...(p.name !== undefined && { name: p.name }),
+  ...(p.title !== undefined && { title: p.title }),
+  ...(p.slug !== undefined && { slug: p.slug }),
+  ...(p.subHeading !== undefined && { subHeading: p.subHeading }),
+  ...(p.description !== undefined && { description: p.description }),
+  ...(p.logo !== undefined && { logo: p.logo }),
+  ...(p.image !== undefined && { logo: p.image }),
+  ...(p.bannerImage !== undefined && { bannerImage: p.bannerImage }),
+  ...(p.banner !== undefined && { bannerImage: p.banner }),
+  ...(p.gameCurrencyName !== undefined && { gameCurrencyName: p.gameCurrencyName }),
+  ...(p.fulfillmentType !== undefined && { fulfillmentType: p.fulfillmentType }),
+  ...(p.instructions !== undefined && { instructions: p.instructions }),
+  ...(p.estimatedDelivery !== undefined && { estimatedDelivery: p.estimatedDelivery }),
+  ...(p.termsAndConditions !== undefined && { termsAndConditions: p.termsAndConditions }),
+  ...(p.status !== undefined && { status: p.status }),
+  ...(p.isFeatured !== undefined && { isFeatured: p.isFeatured }),
+  ...(p.sortOrder !== undefined && { sortOrder: p.sortOrder }),
+  ...(p.categoryId !== undefined && { categoryId: p.categoryId }),
+  ...(userId && { updatedById: userId }),
+});
 
-  return {
-    title,
-    slug: payload.slug,
-    description: payload.description,
-    subHeading: payload.subHeading,
-    brand: payload.name || title,
-    type: ProductType.GAME_TOP_UP,
-    price: payload.price ?? lowestPrice,
-    stockQuantity: payload.stockQuantity ?? 999999,
-    categoryId: payload.categoryId,
-    offerPercent: payload.offerPercent,
-    photos: payload.photos || (image ? [image] : []),
-    thumbnail: image,
-    bannerImage: payload.banner,
-    features: payload.features,
-    currency: "BDT",
-    sortOrder: payload.sortOrder,
-    gameTopUp: {
-      gameName: payload.name || title,
-      gameCurrencyName: payload.gameCurrencyName,
-      instructions: payload.instructions,
-      packages,
-      inputFields:
-        payload.inputFields || [
-          {
-            name: "playerId",
-            label: "Player ID",
-            type: "TEXT" as const,
-            isRequired: true,
-            sortOrder: 0,
-          },
-        ],
-    },
-  };
-};
-
-const getTopUps = async (query: { page?: string; limit?: string }) => {
+const getTopUps = async (query: Query) => {
   const page = Math.max(Number(query.page) || 1, 1);
-  const limit = Math.min(Number(query.limit) || 12, 100);
-  const skip = (page - 1) * limit;
-
-  const where = {
-    type: ProductType.GAME_TOP_UP,
-    isActive: true,
-  };
-
-  const [products, total] = await prismaC.$transaction([
-    prismaC.product.findMany({
-      where,
-      skip,
-      take: limit,
-      orderBy: { createdAt: "desc" },
-      include: {
-        category: { select: { id: true, title: true } },
-        gameTopUp: {
-          include: {
-            packages: {
-              where: { isActive: true },
-              orderBy: { sortOrder: "asc" },
-            },
-            inputFields: {
-              where: { isActive: true },
-              orderBy: { sortOrder: "asc" },
-            },
-          },
-        },
-      },
-    }),
-    prismaC.product.count({ where }),
-  ]);
-
-  return {
-    meta: {
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    },
-    data: products,
-  };
-};
-
-const getTopUpById = async (id: string) => {
-  const product = await prismaC.product.findFirst({
-    where: {
-      id,
-      type: ProductType.GAME_TOP_UP,
-      isActive: true,
-    },
-    include: {
-      category: { select: { id: true, title: true } },
-      gameTopUp: {
-        include: {
-          packages: {
-            where: { isActive: true },
-            orderBy: { sortOrder: "asc" },
-          },
-          inputFields: {
-            where: { isActive: true },
-            orderBy: { sortOrder: "asc" },
-          },
-        },
-      },
-    },
-  });
-
-  if (!product) {
-    throw new ApiAppError(404, "Top-up product not found");
+  const limit = Math.min(Math.max(Number(query.limit) || 12, 1), 100);
+  if (query.status && !Object.values(ProductStatus).includes(query.status as ProductStatus)) {
+    throw new ApiAppError(400, "Invalid product status");
   }
-
-  return product;
+  const where: any = {
+    deletedAt: null,
+    status: query.status ?? "ACTIVE",
+    ...(query.categoryId && { categoryId: query.categoryId }),
+    ...(query.isFeatured !== undefined && { isFeatured: query.isFeatured === "true" }),
+    ...(query.search && {
+      OR: ["name", "title", "slug"].map((field) => ({
+        [field]: { contains: query.search, mode: "insensitive" },
+      })),
+    }),
+  };
+  const [data, total] = await prismaC.$transaction([
+    prismaC.gameTopUpProduct.findMany({
+      where,
+      skip: (page - 1) * limit,
+      take: limit,
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
+      include,
+    }),
+    prismaC.gameTopUpProduct.count({ where }),
+  ]);
+  return { meta: { total, page, limit, totalPages: Math.ceil(total / limit) }, data };
 };
 
-const createTopUp = async (payload: GameTopUpPayload, adminUserId?: string) => {
-  return productServices.addProduct(buildProductPayload(payload), adminUserId);
+const getTopUpById = async (id: string, includeInactive = false) => {
+  const result = await prismaC.gameTopUpProduct.findFirst({
+    where: {
+      OR: [{ id }, { slug: id }],
+      deletedAt: null,
+      ...(includeInactive ? {} : { status: ProductStatus.ACTIVE }),
+    },
+    include,
+  });
+  if (!result) throw new ApiAppError(404, "Top-up product not found");
+  return result;
 };
 
-const updateTopUp = async (
-  id: string,
-  payload: Partial<GameTopUpPayload>,
-  adminUserId?: string,
-) => {
-  await getTopUpById(id);
+const createTopUp = async (payload: Payload, userId?: string) => {
+  const packages = packagesFrom(payload);
+  const name = payload.name ?? payload.title;
+  const title = payload.title ?? payload.name;
+  const logo = payload.logo ?? payload.image;
+  if (!name || !title || !payload.slug || !logo || !payload.gameCurrencyName) {
+    throw new ApiAppError(400, "name, title, slug, logo and gameCurrencyName are required");
+  }
+  if (!payload.fulfillmentType) {
+    throw new ApiAppError(400, "fulfillmentType is required");
+  }
+  return prismaC.gameTopUpProduct.create({
+    data: {
+      ...productData(payload),
+      name,
+      title,
+      slug: payload.slug,
+      logo,
+      gameCurrencyName: payload.gameCurrencyName,
+      fulfillmentType: payload.fulfillmentType,
+      ...(userId && { createdById: userId, updatedById: userId }),
+      packages: { create: packages },
+      inputFields: { create: inputFieldsFrom(payload.inputFields) },
+    },
+    include,
+  });
+};
 
-  const productPayload =
-    payload.packages || payload.topUpAmounts
-      ? buildProductPayload(payload as GameTopUpPayload)
-      : {
-          ...payload,
-          title: payload.title || payload.name,
-          brand: payload.name,
-          type: ProductType.GAME_TOP_UP,
-        };
-
-  return productServices.updateProduct(id, productPayload, adminUserId);
+const updateTopUp = async (id: string, payload: Payload, userId?: string) => {
+  const existing = await getTopUpById(id, true);
+  const packages =
+    payload.packages || payload.topUpAmounts ? packagesFrom(payload) : undefined;
+  const inputFields = payload.inputFields
+    ? inputFieldsFrom(payload.inputFields)
+    : undefined;
+  return prismaC.gameTopUpProduct.update({
+    where: { id: existing.id },
+    data: {
+      ...productData(payload, userId),
+      ...(packages && { packages: { deleteMany: {}, create: packages } }),
+      ...(inputFields && { inputFields: { deleteMany: {}, create: inputFields } }),
+    },
+    include,
+  });
 };
 
 const deleteTopUp = async (id: string) => {
-  await getTopUpById(id);
-  return productServices.deleteProduct(id);
+  const existing = await getTopUpById(id, true);
+  return prismaC.gameTopUpProduct.update({
+    where: { id: existing.id },
+    data: { status: "ARCHIVED", deletedAt: new Date() },
+  });
 };
 
 export const gameTopUpServices = {

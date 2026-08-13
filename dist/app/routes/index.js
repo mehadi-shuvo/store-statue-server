@@ -9,11 +9,17 @@ const game_top_up_route_1 = require("../../modules/game-top-up/game-top-up.route
 const gift_card_route_1 = require("../../modules/gift-card/gift-card.route");
 const review_route_1 = require("../../modules/review/review.route");
 const subscription_route_1 = require("../../modules/subscription/subscription.route");
+const admin_route_1 = require("../../modules/admin/admin.route");
+const payment_route_1 = require("../../modules/payment/routes/payment.route");
 const router = (0, express_1.Router)();
 const moduleRoutes = [
     {
         path: "/user",
         route: user_route_1.userRouter,
+    },
+    {
+        path: "/admins",
+        route: admin_route_1.adminRouter,
     },
     {
         path: "/products",
@@ -42,6 +48,10 @@ const moduleRoutes = [
     {
         path: "/review",
         route: review_route_1.reviewRouter,
+    },
+    {
+        path: "/payments",
+        route: payment_route_1.paymentRouter,
     },
 ];
 moduleRoutes.forEach((route) => router.use(route.path, route.route));

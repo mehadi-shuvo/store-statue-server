@@ -4,8 +4,10 @@ import { userService } from "./user.service";
 import {
   createCustomerSchema,
   deleteCustomerProfileSchema,
+  forgotPasswordSchema,
   loginSchema,
   parseRequestBody,
+  resetPasswordSchema,
   updateCustomerProfileSchema,
 } from "./user.validation";
 
@@ -101,13 +103,23 @@ const deleteCustomerProfile = catchAsync(async (req, res) => {
 
 /* ========== FORGOT PASSWORD ========== */
 const forgotPassword = catchAsync(async (req, res) => {
-  const { email } = req.body;
+  const { email } = parseRequestBody(forgotPasswordSchema, req.body);
 
   const result = await userService.forgotPassword(email);
 
   res.status(200).json({
     success: true,
     message: result.message,
+  });
+});
+
+const resetPassword = catchAsync(async (req, res) => {
+  const payload = parseRequestBody(resetPasswordSchema, req.body);
+  await userService.resetPassword(payload);
+
+  res.status(200).json({
+    success: true,
+    message: "Password reset successfully",
   });
 });
 
@@ -128,5 +140,6 @@ export const userController = {
   updateCustomerProfile,
   deleteCustomerProfile,
   forgotPassword,
+  resetPassword,
   getUsers,
 };

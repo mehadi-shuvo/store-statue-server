@@ -46,6 +46,7 @@ export const authenticateUser = async (
     const user = await prismaC.user.findFirst({
       where: {
         id: decoded.userId,
+        isActive: true,
         isDeleted: false,
       },
       select: {

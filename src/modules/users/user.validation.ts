@@ -41,6 +41,16 @@ export const loginSchema = z
   })
   .strict();
 
+export const forgotPasswordSchema = z.object({ email: emailSchema }).strict();
+
+export const resetPasswordSchema = z
+  .object({
+    email: emailSchema,
+    otp: z.string().trim().regex(/^\d{6}$/, "OTP must be a 6-digit code"),
+    newPassword: passwordSchema,
+  })
+  .strict();
+
 export const updateCustomerProfileSchema = z
   .object({
     name: z.string().trim().min(2, "Name is required").max(80, "Name is too long").optional(),
@@ -61,6 +71,7 @@ export type CreateCustomerPayload = z.infer<typeof createCustomerSchema>;
 export type LoginPayload = z.infer<typeof loginSchema>;
 export type UpdateCustomerProfilePayload = z.infer<typeof updateCustomerProfileSchema>;
 export type DeleteCustomerProfilePayload = z.infer<typeof deleteCustomerProfileSchema>;
+export type ResetPasswordPayload = z.infer<typeof resetPasswordSchema>;
 
 export const parseRequestBody = <T>(schema: z.ZodSchema<T>, body: unknown): T => {
   const parsed = schema.safeParse(body);

@@ -1,0 +1,13 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.paymentRouter = void 0;
+const express_1 = require("express");
+const auth_middleware_1 = require("../../../middlewares/auth.middleware");
+const validate_middleware_1 = require("../../../middlewares/validate.middleware");
+const payment_controller_1 = require("../controllers/payment.controller");
+const payment_validation_1 = require("../validators/payment.validation");
+const router = (0, express_1.Router)();
+router.post("/create", auth_middleware_1.authenticateUser, (0, validate_middleware_1.validateRequest)({ body: payment_validation_1.createPaymentSchema }), payment_controller_1.paymentController.createPayment);
+router.post("/execute", auth_middleware_1.authenticateUser, (0, validate_middleware_1.validateRequest)({ body: payment_validation_1.executePaymentSchema, query: payment_validation_1.paymentScenarioQuerySchema }), payment_controller_1.paymentController.executePayment);
+router.get("/status/:paymentId", auth_middleware_1.authenticateUser, (0, validate_middleware_1.validateRequest)({ params: payment_validation_1.paymentParamsSchema }), payment_controller_1.paymentController.getPaymentStatus);
+exports.paymentRouter = router;

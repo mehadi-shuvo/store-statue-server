@@ -3,7 +3,10 @@ import { prismaC } from "../../utils/prisma-client";
 
 interface CategoryPayload {
   title: string;
+  slug?: string;
   description?: string;
+  isActive?: boolean;
+  sortOrder?: number;
 }
 
 interface BulkCategoryPayload {
@@ -14,13 +17,69 @@ interface GetCategoriesQuery {
   includeInactive?: string;
 }
 
+const toSlug = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+const getAvailableSlug = async (value: string, excludeId?: string) => {
+  const baseSlug = toSlug(value);
+  if (!baseSlug) throw new ApiAppError(400, "A valid category slug is required");
+
+  let slug = baseSlug;
+  let suffix = 2;
+  while (
+    await prismaC.category.findFirst({
+      where: { slug, ...(excludeId ? { NOT: { id: excludeId } } : {}) },
+      select: { id: true },
+    })
+  ) {
+    slug = `${baseSlug}-${suffix++}`;
+  }
+  return slug;
+};
+
+const normalizeCategoryPayload = (
+  payload: Partial<CategoryPayload>,
+  requireTitle = false,
+) => {
+  const title = payload.title?.trim();
+
+  if (requireTitle && !title) {
+    throw new ApiAppError(400, "Category title is required");
+  }
+
+  return {
+    ...(title ? { title } : {}),
+    ...(payload.slug?.trim() ? { slug: payload.slug.trim() } : {}),
+    ...(typeof payload.description === "string"
+      ? { description: payload.description.trim() || null }
+      : {}),
+    ...(typeof payload.isActive === "boolean"
+      ? { isActive: payload.isActive }
+      : {}),
+    ...(typeof payload.sortOrder === "number" && Number.isInteger(payload.sortOrder)
+      ? { sortOrder: payload.sortOrder }
+      : {}),
+  };
+};
+
 /**
  * Add Category
  */
 const addCategory = async (payload: CategoryPayload) => {
+  const categoryData = normalizeCategoryPayload(payload, true);
+  const title = categoryData.title;
+
+  if (!title) {
+    throw new ApiAppError(400, "Category title is required");
+  }
+
   const existingCategory = await prismaC.category.findFirst({
     where: {
-      title: payload.title,
+      title: { equals: title, mode: "insensitive" },
       isActive: true,
     },
   });
@@ -29,8 +88,13 @@ const addCategory = async (payload: CategoryPayload) => {
     throw new ApiAppError(409, "Category with this title already exists");
   }
 
+  const slug = await getAvailableSlug(categoryData.slug ?? title);
   const category = await prismaC.category.create({
-    data: payload,
+    data: {
+      ...categoryData,
+      title,
+      slug,
+    },
   });
 
   return category;
@@ -59,7 +123,7 @@ const bulkAddCategories = async (payload: BulkCategoryPayload) => {
 
     return title;
   });
-  const uniqueTitles = new Set(normalizedTitles);
+  const uniqueTitles = new Set(normalizedTitles.map((title) => title.toLowerCase()));
 
   if (uniqueTitles.size !== normalizedTitles.length) {
     throw new ApiAppError(400, "Duplicate category titles found in request");
@@ -67,7 +131,9 @@ const bulkAddCategories = async (payload: BulkCategoryPayload) => {
 
   const existingCategories = await prismaC.category.findMany({
     where: {
-      title: { in: normalizedTitles },
+      OR: normalizedTitles.map((title) => ({
+        title: { equals: title, mode: "insensitive" },
+      })),
       isActive: true,
     },
     select: {
@@ -86,12 +152,36 @@ const bulkAddCategories = async (payload: BulkCategoryPayload) => {
     );
   }
 
+  const slugs: string[] = [];
+  for (let index = 0; index < categories.length; index += 1) {
+    const requestedSlug = categories[index].slug ?? normalizedTitles[index];
+    const baseSlug = toSlug(requestedSlug);
+    if (!baseSlug) {
+      throw new ApiAppError(400, `A valid category slug is required at index ${index}`);
+    }
+    let slug = baseSlug;
+    let suffix = 2;
+    while (slugs.includes(slug) || (await prismaC.category.findUnique({ where: { slug } }))) {
+      slug = `${baseSlug}-${suffix++}`;
+    }
+    slugs.push(slug);
+  }
+
   const createdCategories = await prismaC.$transaction(
     categories.map((category: CategoryPayload, index: number) =>
       prismaC.category.create({
         data: {
           title: normalizedTitles[index],
-          description: category.description,
+          slug: slugs[index],
+          ...(typeof category.description === "string"
+            ? { description: category.description.trim() || null }
+            : {}),
+          ...(typeof category.isActive === "boolean"
+            ? { isActive: category.isActive }
+            : {}),
+          ...(Number.isInteger(category.sortOrder)
+            ? { sortOrder: category.sortOrder }
+            : {}),
         },
       }),
     ),
@@ -123,11 +213,7 @@ const getCategories = async (query?: GetCategoriesQuery) => {
  */
 const updateCategory = async (
   categoryId: string,
-  payload: Partial<{
-    title: string;
-    description: string;
-    isActive: boolean;
-  }>
+  payload: Partial<CategoryPayload>,
 ) => {
   const categoryExists = await prismaC.category.findUnique({
     where: { id: categoryId },
@@ -137,10 +223,16 @@ const updateCategory = async (
     throw new ApiAppError(404, "Category not found");
   }
 
-  if (payload.title) {
+  const categoryData = normalizeCategoryPayload(payload);
+
+  if (categoryData.slug) {
+    categoryData.slug = await getAvailableSlug(categoryData.slug, categoryId);
+  }
+
+  if (categoryData.title) {
     const duplicateCategory = await prismaC.category.findFirst({
       where: {
-        title: payload.title,
+        title: categoryData.title,
         isActive: true,
         NOT: { id: categoryId },
       },
@@ -153,7 +245,7 @@ const updateCategory = async (
 
   const updatedCategory = await prismaC.category.update({
     where: { id: categoryId },
-    data: payload,
+    data: categoryData,
   });
 
   return updatedCategory;
@@ -166,9 +258,9 @@ const deleteCategory = async (categoryId: string) => {
   const categoryExists = await prismaC.category.findUnique({
     where: { id: categoryId },
     include: {
-      products: {
-        where: { isActive: true },
-      },
+      giftCards: { where: { status: "ACTIVE", deletedAt: null }, select: { id: true } },
+      gameTopUps: { where: { status: "ACTIVE", deletedAt: null }, select: { id: true } },
+      subscriptions: { where: { status: "ACTIVE", deletedAt: null }, select: { id: true } },
     },
   });
 
@@ -176,7 +268,11 @@ const deleteCategory = async (categoryId: string) => {
     throw new ApiAppError(404, "Category not found");
   }
 
-  if (categoryExists.products.length > 0) {
+  if (
+    categoryExists.giftCards.length > 0 ||
+    categoryExists.gameTopUps.length > 0 ||
+    categoryExists.subscriptions.length > 0
+  ) {
     throw new ApiAppError(400, "Cannot delete category with active products");
   }
 

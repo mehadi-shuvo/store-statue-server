@@ -32,6 +32,7 @@ const authenticateUser = async (req, res, next) => {
         const user = await prisma_client_1.prismaC.user.findFirst({
             where: {
                 id: decoded.userId,
+                isActive: true,
                 isDeleted: false,
             },
             select: {

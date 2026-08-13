@@ -12,6 +12,7 @@ const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const sendEmail_1 = require("../../utils/sendEmail");
 const generateOTP_1 = require("../../utils/generateOTP");
 const client_1 = require("../../generated/prisma/client");
+const logger_1 = require("../../utils/logger");
 const DUMMY_PASSWORD_HASH = "$2b$12$h6TRZPS.vxvidI7C2qHZeuVMUVEk0jEGbV4i.LPDQzazE9a.5XFV.";
 const userProfileSelect = {
     id: true,
@@ -31,6 +32,7 @@ const getActiveCustomerById = async (userId) => {
         where: {
             id: userId,
             role: client_1.UserRole.CUSTOMER,
+            isActive: true,
             isDeleted: false,
         },
     });
@@ -87,15 +89,18 @@ const loginUser = async ({ email, password }) => {
     const user = await prisma_client_1.prismaC.user.findFirst({
         where: {
             email,
+            isActive: true,
             isDeleted: false,
         },
     });
     if (!user) {
         await bcryptjs_1.default.compare(password, DUMMY_PASSWORD_HASH);
+        logger_1.logger.warn({ email }, "Failed login attempt: user not found or inactive");
         throw new apiAppError_1.ApiAppError(401, "Invalid email or password");
     }
     const isPasswordMatched = await bcryptjs_1.default.compare(password, user.password);
     if (!isPasswordMatched) {
+        logger_1.logger.warn({ userId: user.id, email: user.email }, "Failed login attempt: invalid password");
         throw new apiAppError_1.ApiAppError(401, "Invalid email or password");
     }
     if (!env_config_1.ENV.JWT_SECRET) {
@@ -157,35 +162,46 @@ const forgotPassword = async (email) => {
     const user = await prisma_client_1.prismaC.user.findUnique({
         where: { email },
     });
-    if (!user) {
-        throw new apiAppError_1.ApiAppError(404, "User not found");
-    }
+    const genericResponse = {
+        message: "If an active account exists for that email, an OTP has been sent",
+    };
+    if (!user || !user.isActive || user.isDeleted)
+        return genericResponse;
     const otp = (0, generateOTP_1.generateOtp)();
     const expireTime = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+    const hashedOtp = await bcryptjs_1.default.hash(otp, env_config_1.ENV.BCRYPT_SALT);
+    await prisma_client_1.prismaC.oTP.updateMany({
+        where: {
+            userId: user.id,
+            type: client_1.OtpType.PASSWORD_RESET,
+            used: false,
+        },
+        data: { used: true },
+    });
     await prisma_client_1.prismaC.oTP.create({
         data: {
-            code: otp,
-            type: "AUTHENTICATION",
+            code: hashedOtp,
+            type: client_1.OtpType.PASSWORD_RESET,
             expiresAt: expireTime,
             userId: user.id,
         },
     });
     await (0, sendEmail_1.sendEmail)(email, "Password Reset OTP", `Your password reset OTP is ${otp}. It will expire in 5 minutes.`);
-    return { message: "OTP sent to your email" };
+    return genericResponse;
 };
-const verifyOtp = async (userId, otpCode, type) => {
+const verifyOtp = async (userId, otpCode, type = client_1.OtpType.PASSWORD_RESET) => {
     const otp = await prisma_client_1.prismaC.oTP.findFirst({
         where: {
             userId,
-            code: otpCode,
             type,
             used: false,
             expiresAt: {
                 gt: new Date(),
             },
         },
+        orderBy: { createdAt: "desc" },
     });
-    if (!otp) {
+    if (!otp || !(await bcryptjs_1.default.compare(otpCode, otp.code))) {
         throw new apiAppError_1.ApiAppError(400, "Invalid or expired OTP");
     }
     await prisma_client_1.prismaC.oTP.update({
@@ -193,6 +209,45 @@ const verifyOtp = async (userId, otpCode, type) => {
         data: { used: true },
     });
     return true;
+};
+const resetPassword = async (payload) => {
+    const user = await prisma_client_1.prismaC.user.findFirst({
+        where: {
+            email: payload.email,
+            isActive: true,
+            isDeleted: false,
+        },
+        select: { id: true },
+    });
+    if (!user)
+        throw new apiAppError_1.ApiAppError(400, "Invalid or expired OTP");
+    const otp = await prisma_client_1.prismaC.oTP.findFirst({
+        where: {
+            userId: user.id,
+            type: client_1.OtpType.PASSWORD_RESET,
+            used: false,
+            expiresAt: { gt: new Date() },
+        },
+        orderBy: { createdAt: "desc" },
+    });
+    if (!otp || !(await bcryptjs_1.default.compare(payload.otp, otp.code))) {
+        throw new apiAppError_1.ApiAppError(400, "Invalid or expired OTP");
+    }
+    const hashedPassword = await bcryptjs_1.default.hash(payload.newPassword, env_config_1.ENV.BCRYPT_SALT);
+    await prisma_client_1.prismaC.$transaction(async (tx) => {
+        const usedOtp = await tx.oTP.updateMany({
+            where: { id: otp.id, used: false, expiresAt: { gt: new Date() } },
+            data: { used: true },
+        });
+        if (usedOtp.count !== 1) {
+            throw new apiAppError_1.ApiAppError(400, "Invalid or expired OTP");
+        }
+        await tx.user.update({
+            where: { id: user.id },
+            data: { password: hashedPassword },
+        });
+    });
+    return { reset: true };
 };
 const getUsers = async () => {
     return prisma_client_1.prismaC.user.findMany({
@@ -214,5 +269,6 @@ exports.userService = {
     deleteCustomerProfile,
     forgotPassword,
     verifyOtp,
+    resetPassword,
     getUsers,
 };
