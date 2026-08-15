@@ -1,0 +1,18 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.giftCardCartRouter = void 0;
+const express_1 = require("express");
+const auth_middleware_1 = require("../../middlewares/auth.middleware");
+const rate_limit_middleware_1 = require("../../middlewares/rate-limit.middleware");
+const validate_middleware_1 = require("../../middlewares/validate.middleware");
+const gift_card_commerce_controller_1 = require("./gift-card-commerce.controller");
+const gift_card_validation_1 = require("./gift-card.validation");
+const router = (0, express_1.Router)();
+router.use(auth_middleware_1.authenticateUser, rate_limit_middleware_1.authenticatedUserRateLimiter);
+router.get("/", gift_card_commerce_controller_1.giftCardCommerceController.getCart);
+router.post("/items", (0, validate_middleware_1.validateRequest)({ body: gift_card_validation_1.cartGiftCardItemSchema }), gift_card_commerce_controller_1.giftCardCommerceController.addCartItem);
+router.patch("/items/:cartItemId", (0, validate_middleware_1.validateRequest)({ params: gift_card_validation_1.cartItemIdParamsSchema, body: gift_card_validation_1.updateCartGiftCardItemSchema }), gift_card_commerce_controller_1.giftCardCommerceController.updateCartItem);
+router.delete("/items/:cartItemId", (0, validate_middleware_1.validateRequest)({ params: gift_card_validation_1.cartItemIdParamsSchema }), gift_card_commerce_controller_1.giftCardCommerceController.removeCartItem);
+router.delete("/", gift_card_commerce_controller_1.giftCardCommerceController.clearCart);
+router.post("/checkout", (0, validate_middleware_1.validateRequest)({ body: gift_card_validation_1.deliveryEmailSchema }), gift_card_commerce_controller_1.giftCardCommerceController.checkoutCart);
+exports.giftCardCartRouter = router;

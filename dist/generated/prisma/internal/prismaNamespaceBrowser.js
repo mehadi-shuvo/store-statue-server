@@ -48,7 +48,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.JsonNullValueFilter = exports.NullsOrder = exports.QueryMode = exports.NullableJsonNullValueInput = exports.SortOrder = exports.AuditLogScalarFieldEnum = exports.PaymentScalarFieldEnum = exports.OrderItemScalarFieldEnum = exports.OrderScalarFieldEnum = exports.CartItemScalarFieldEnum = exports.CartScalarFieldEnum = exports.ReviewScalarFieldEnum = exports.SubscriptionInputFieldScalarFieldEnum = exports.SubscriptionPlanScalarFieldEnum = exports.SubscriptionProductScalarFieldEnum = exports.GameTopUpInputFieldScalarFieldEnum = exports.GameTopUpPackageScalarFieldEnum = exports.GameTopUpProductScalarFieldEnum = exports.GiftCardCodeScalarFieldEnum = exports.GiftCardDenominationScalarFieldEnum = exports.GiftCardProductScalarFieldEnum = exports.CategoryScalarFieldEnum = exports.AddressScalarFieldEnum = exports.OTPScalarFieldEnum = exports.UserScalarFieldEnum = exports.TransactionIsolationLevel = exports.ModelName = exports.AnyNull = exports.JsonNull = exports.DbNull = exports.NullTypes = exports.Decimal = void 0;
+exports.JsonNullValueFilter = exports.NullsOrder = exports.QueryMode = exports.NullableJsonNullValueInput = exports.SortOrder = exports.AuditLogScalarFieldEnum = exports.PaymentScalarFieldEnum = exports.OrderItemScalarFieldEnum = exports.OrderScalarFieldEnum = exports.CartItemScalarFieldEnum = exports.CartScalarFieldEnum = exports.ReviewScalarFieldEnum = exports.SubscriptionInputFieldScalarFieldEnum = exports.SubscriptionPlanScalarFieldEnum = exports.SubscriptionProductScalarFieldEnum = exports.GameTopUpInputFieldScalarFieldEnum = exports.GameTopUpPackageScalarFieldEnum = exports.GameTopUpProductScalarFieldEnum = exports.GiftCardDeliveryScalarFieldEnum = exports.GiftCardCodeScalarFieldEnum = exports.GiftCardDenominationScalarFieldEnum = exports.GiftCardProductScalarFieldEnum = exports.CategoryScalarFieldEnum = exports.AddressScalarFieldEnum = exports.OTPScalarFieldEnum = exports.UserScalarFieldEnum = exports.TransactionIsolationLevel = exports.ModelName = exports.AnyNull = exports.JsonNull = exports.DbNull = exports.NullTypes = exports.Decimal = void 0;
 const runtime = __importStar(require("@prisma/client/runtime/index-browser"));
 exports.Decimal = runtime.Decimal;
 exports.NullTypes = {
@@ -82,6 +82,7 @@ exports.ModelName = {
     GiftCardProduct: 'GiftCardProduct',
     GiftCardDenomination: 'GiftCardDenomination',
     GiftCardCode: 'GiftCardCode',
+    GiftCardDelivery: 'GiftCardDelivery',
     GameTopUpProduct: 'GameTopUpProduct',
     GameTopUpPackage: 'GameTopUpPackage',
     GameTopUpInputField: 'GameTopUpInputField',
@@ -157,7 +158,9 @@ exports.GiftCardProductScalarFieldEnum = {
     title: 'title',
     slug: 'slug',
     description: 'description',
+    shortDescription: 'shortDescription',
     image: 'image',
+    logoUrl: 'logoUrl',
     bannerImage: 'bannerImage',
     cardCurrency: 'cardCurrency',
     region: 'region',
@@ -199,9 +202,28 @@ exports.GiftCardCodeScalarFieldEnum = {
     pin: 'pin',
     serialNo: 'serialNo',
     expiryDate: 'expiryDate',
-    isSold: 'isSold',
+    status: 'status',
+    reservedAt: 'reservedAt',
     soldAt: 'soldAt',
     orderItemId: 'orderItemId',
+    createdById: 'createdById',
+    updatedById: 'updatedById',
+    createdAt: 'createdAt',
+    updatedAt: 'updatedAt'
+};
+exports.GiftCardDeliveryScalarFieldEnum = {
+    id: 'id',
+    orderItemId: 'orderItemId',
+    inventoryCodeId: 'inventoryCodeId',
+    cardNameSnapshot: 'cardNameSnapshot',
+    brandSnapshot: 'brandSnapshot',
+    faceValueSnapshot: 'faceValueSnapshot',
+    currencySnapshot: 'currencySnapshot',
+    expiryDateSnapshot: 'expiryDateSnapshot',
+    deliveryEmail: 'deliveryEmail',
+    deliveryStatus: 'deliveryStatus',
+    deliveredAt: 'deliveredAt',
+    failureReason: 'failureReason',
     createdAt: 'createdAt',
     updatedAt: 'updatedAt'
 };
@@ -369,6 +391,7 @@ exports.OrderScalarFieldEnum = {
     id: 'id',
     orderNumber: 'orderNumber',
     notes: 'notes',
+    deliveryEmail: 'deliveryEmail',
     subtotal: 'subtotal',
     discountTotal: 'discountTotal',
     totalCost: 'totalCost',
@@ -397,6 +420,9 @@ exports.OrderItemScalarFieldEnum = {
     fulfilledAt: 'fulfilledAt',
     giftCardProductId: 'giftCardProductId',
     giftCardDenominationId: 'giftCardDenominationId',
+    brandSnapshot: 'brandSnapshot',
+    faceValueSnapshot: 'faceValueSnapshot',
+    faceCurrencySnapshot: 'faceCurrencySnapshot',
     gameTopUpProductId: 'gameTopUpProductId',
     gameTopUpPackageId: 'gameTopUpPackageId',
     subscriptionProductId: 'subscriptionProductId',

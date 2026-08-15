@@ -47,6 +47,14 @@ enum GiftCardDeliveryType {
   ACCOUNT_RECHARGE
 }
 
+enum GiftCardCodeStatus {
+  AVAILABLE
+  RESERVED
+  SOLD
+  DISABLED
+  EXPIRED
+}
+
 enum GiftCardRegion {
   GLOBAL
   USA

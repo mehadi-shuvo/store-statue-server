@@ -10,6 +10,8 @@
     "postinstall": "prisma generate",
     "build": "npm run prisma:generate && tsc",
     "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test dist/modules/gift-card/tests/*.test.js",
+    "test:gift-card:integration": "RUN_GIFT_CARD_INTEGRATION_TESTS=true npm run test",
     "start": "node dist/server.js"
   },
   "keywords": [],

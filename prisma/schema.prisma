@@ -35,8 +35,10 @@ model User {
   otps      OTP[]
   auditLogs AuditLog[]
 
-  createdGiftCards GiftCardProduct[] @relation("GiftCardCreatedBy")
-  updatedGiftCards GiftCardProduct[] @relation("GiftCardUpdatedBy")
+  createdGiftCards     GiftCardProduct[] @relation("GiftCardCreatedBy")
+  updatedGiftCards     GiftCardProduct[] @relation("GiftCardUpdatedBy")
+  createdGiftCardCodes GiftCardCode[]    @relation("GiftCardCodeCreatedBy")
+  updatedGiftCardCodes GiftCardCode[]    @relation("GiftCardCodeUpdatedBy")
 
   createdGameTopUps GameTopUpProduct[] @relation("GameTopUpCreatedBy")
   updatedGameTopUps GameTopUpProduct[] @relation("GameTopUpUpdatedBy")
@@ -124,12 +126,14 @@ model Category {
 model GiftCardProduct {
   id String @id @default(uuid())
 
-  brand       String
-  title       String
-  slug        String  @unique
-  description String?
-  image       String
-  bannerImage String?
+  brand            String
+  title            String
+  slug             String  @unique
+  description      String?
+  shortDescription String?
+  image            String
+  logoUrl          String?
+  bannerImage      String?
 
   cardCurrency String               @default("USD")
   region       GiftCardRegion       @default(GLOBAL)
@@ -172,7 +176,7 @@ model GiftCardDenomination {
   id String @id @default(uuid())
 
   giftCardProductId String
-  giftCardProduct   GiftCardProduct @relation(fields: [giftCardProductId], references: [id], onDelete: Cascade)
+  giftCardProduct   GiftCardProduct @relation(fields: [giftCardProductId], references: [id], onDelete: Restrict)
 
   title String?
 
@@ -221,25 +225,65 @@ model GiftCardCode {
   id String @id @default(uuid())
 
   denominationId String
-  denomination   GiftCardDenomination @relation(fields: [denominationId], references: [id], onDelete: Cascade)
+  denomination   GiftCardDenomination @relation(fields: [denominationId], references: [id], onDelete: Restrict)
 
   // Production-এ encrypted value রাখা ভালো
-  code       String
+  code       String    @unique
   pin        String?
   serialNo   String?
   expiryDate DateTime?
 
-  isSold      Boolean    @default(false)
-  soldAt      DateTime?
-  orderItemId String?    @unique
-  orderItem   OrderItem? @relation(fields: [orderItemId], references: [id])
+  status     GiftCardCodeStatus @default(AVAILABLE)
+  reservedAt DateTime?
+  soldAt     DateTime?
+
+  orderItemId String?
+  orderItem   OrderItem? @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+
+  delivery GiftCardDelivery?
+
+  createdById String?
+  createdBy   User?   @relation("GiftCardCodeCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  updatedById String?
+  updatedBy   User?   @relation("GiftCardCodeUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([denominationId])
-  @@index([isSold])
+  @@index([denominationId, status])
+  @@index([status])
+  @@index([expiryDate])
+  @@index([orderItemId])
   @@map("gift_card_codes")
+}
+
+model GiftCardDelivery {
+  id String @id @default(uuid())
+
+  orderItemId String
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+
+  inventoryCodeId String       @unique
+  inventoryCode   GiftCardCode @relation(fields: [inventoryCodeId], references: [id], onDelete: Restrict)
+
+  cardNameSnapshot   String
+  brandSnapshot      String
+  faceValueSnapshot  Decimal        @db.Decimal(12, 2)
+  currencySnapshot   String
+  expiryDateSnapshot DateTime?
+  deliveryEmail      String
+  deliveryStatus     DeliveryStatus @default(PENDING)
+  deliveredAt        DateTime?
+  failureReason      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orderItemId])
+  @@index([deliveryEmail])
+  @@index([deliveryStatus])
+  @@map("gift_card_deliveries")
 }
 
 //////////////////////////////////////////////////
@@ -627,9 +671,10 @@ model CartItem {
 //////////////////////////////////////////////////
 
 model Order {
-  id          String  @id @default(uuid())
-  orderNumber String  @unique
-  notes       String?
+  id            String  @id @default(uuid())
+  orderNumber   String  @unique
+  notes         String?
+  deliveryEmail String?
 
   subtotal      Decimal @db.Decimal(12, 2)
   discountTotal Decimal @default(0) @db.Decimal(12, 2)
@@ -654,6 +699,7 @@ model Order {
   @@index([status])
   @@index([paymentStatus])
   @@index([createdAt])
+  @@index([deliveryEmail])
   @@map("orders")
 }
 
@@ -692,7 +738,12 @@ model OrderItem {
   giftCardDenominationId String?
   giftCardDenomination   GiftCardDenomination? @relation(fields: [giftCardDenominationId], references: [id])
 
-  assignedGiftCardCode GiftCardCode?
+  assignedGiftCardCodes GiftCardCode[]
+  giftCardDeliveries    GiftCardDelivery[]
+
+  brandSnapshot        String?
+  faceValueSnapshot    Decimal? @db.Decimal(12, 2)
+  faceCurrencySnapshot String?
 
   //////////////////////////////////////////////////
   // GAME TOP-UP

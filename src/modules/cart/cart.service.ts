@@ -99,10 +99,17 @@ const resolveProductOption = async (payload: CartItemPayload) => {
       },
     });
     if (!option) throw new ApiAppError(404, "Gift card denomination not found");
+    const availableCodes = await prismaC.giftCardCode.count({
+      where: {
+        denominationId: option.id,
+        status: "AVAILABLE",
+        OR: [{ expiryDate: null }, { expiryDate: { gt: new Date() } }],
+      },
+    });
     return {
       productType,
       unitPrice: option.sellingPriceBDT,
-      stockQuantity: option.stockQuantity,
+      stockQuantity: availableCodes,
     };
   }
 
@@ -282,10 +289,56 @@ const clearCart = async (userId: string) => {
   return { message: "Cart cleared successfully" };
 };
 
+const addGiftCardItem = async (userId: string, payload: { denominationId: string; quantity: number }) => {
+  const denomination = await prismaC.giftCardDenomination.findUnique({
+    where: { id: payload.denominationId },
+    select: { giftCardProductId: true },
+  });
+  if (!denomination) throw new ApiAppError(404, "Gift card denomination not found", undefined, "GIFT_CARD_DENOMINATION_NOT_FOUND");
+  return addToCart({
+    userId,
+    productId: denomination.giftCardProductId,
+    giftCardDenominationId: payload.denominationId,
+    quantity: payload.quantity,
+  });
+};
+
+const updateGiftCardItem = async (userId: string, cartItemId: string, quantity: number) => {
+  const item = await prismaC.cartItem.findFirst({
+    where: { id: cartItemId, cart: { userId }, productType: DigitalProductType.GIFT_CARD },
+  });
+  if (!item?.giftCardProductId || !item.giftCardDenominationId) {
+    throw new ApiAppError(404, "Cart item not found");
+  }
+  return updateCartItem({
+    userId,
+    productId: item.giftCardProductId,
+    giftCardDenominationId: item.giftCardDenominationId,
+    quantity,
+  });
+};
+
+const removeGiftCardItem = async (userId: string, cartItemId: string) => {
+  const item = await prismaC.cartItem.findFirst({
+    where: { id: cartItemId, cart: { userId }, productType: DigitalProductType.GIFT_CARD },
+  });
+  if (!item?.giftCardProductId || !item.giftCardDenominationId) {
+    throw new ApiAppError(404, "Cart item not found");
+  }
+  return removeFromCart({
+    userId,
+    productId: item.giftCardProductId,
+    giftCardDenominationId: item.giftCardDenominationId,
+  });
+};
+
 export const cartServices = {
   addToCart,
   updateCartItem,
   removeFromCart,
   getCart,
   clearCart,
+  addGiftCardItem,
+  updateGiftCardItem,
+  removeGiftCardItem,
 };

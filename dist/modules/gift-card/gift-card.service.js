@@ -8,6 +8,62 @@ const include = {
     category: { select: { id: true, title: true, slug: true } },
     denominations: { orderBy: { sortOrder: "asc" } },
 };
+const publicDenominationSelect = {
+    id: true,
+    title: true,
+    cardValue: true,
+    cardCurrency: true,
+    sellingPriceBDT: true,
+    discountAmountBDT: true,
+    discountPercent: true,
+    discountLabel: true,
+    isPopular: true,
+    sortOrder: true,
+    _count: {
+        select: {
+            codes: {
+                where: {
+                    status: client_1.GiftCardCodeStatus.AVAILABLE,
+                    OR: [{ expiryDate: null }, { expiryDate: { gt: new Date() } }],
+                },
+            },
+        },
+    },
+};
+const publicProductSelect = {
+    id: true,
+    title: true,
+    slug: true,
+    brand: true,
+    description: true,
+    shortDescription: true,
+    image: true,
+    logoUrl: true,
+    bannerImage: true,
+    cardCurrency: true,
+    region: true,
+    deliveryType: true,
+    instructions: true,
+    termsAndConditions: true,
+    isFeatured: true,
+    denominations: {
+        where: { isActive: true },
+        orderBy: [{ sortOrder: "asc" }, { cardValue: "asc" }],
+        select: publicDenominationSelect,
+    },
+};
+const publicProduct = (product) => ({
+    ...product,
+    name: product.title,
+    imageUrl: product.image,
+    denominations: product.denominations.map(({ _count, ...denomination }) => ({
+        ...denomination,
+        faceValue: denomination.cardValue,
+        faceCurrency: denomination.cardCurrency,
+        sellingPriceBdt: denomination.sellingPriceBDT,
+        inStock: _count.codes > 0,
+    })),
+});
 const positiveNumber = (value, field) => {
     const number = Number(value);
     if (!Number.isFinite(number) || number <= 0) {
@@ -82,15 +138,23 @@ const productData = (payload, userId) => ({
 const getGiftCards = async (query) => {
     const page = Math.max(Number(query.page) || 1, 1);
     const limit = Math.min(Math.max(Number(query.limit) || 12, 1), 100);
-    if (query.status && !Object.values(client_1.ProductStatus).includes(query.status)) {
-        throw new apiAppError_1.ApiAppError(400, "Invalid product status");
-    }
     const where = {
         deletedAt: null,
-        status: query.status ?? "ACTIVE",
-        ...(query.categoryId && { categoryId: query.categoryId }),
-        ...(query.isFeatured !== undefined && {
-            isFeatured: query.isFeatured === "true",
+        status: client_1.ProductStatus.ACTIVE,
+        ...(query.brand && { brand: { equals: query.brand, mode: "insensitive" } }),
+        ...((query.minPriceBdt || query.maxPriceBdt || query.faceValue) && {
+            denominations: {
+                some: {
+                    isActive: true,
+                    ...(query.minPriceBdt || query.maxPriceBdt ? {
+                        sellingPriceBDT: {
+                            ...(query.minPriceBdt && { gte: query.minPriceBdt }),
+                            ...(query.maxPriceBdt && { lte: query.maxPriceBdt }),
+                        },
+                    } : {}),
+                    ...(query.faceValue && { cardValue: query.faceValue }),
+                },
+            },
         }),
         ...(query.search && {
             OR: ["title", "brand", "slug"].map((field) => ({
@@ -104,13 +168,13 @@ const getGiftCards = async (query) => {
             skip: (page - 1) * limit,
             take: limit,
             orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
-            include,
+            select: publicProductSelect,
         }),
         prisma_client_1.prismaC.giftCardProduct.count({ where }),
     ]);
-    return { meta: { total, page, limit, totalPages: Math.ceil(total / limit) }, data };
+    return { meta: { total, page, limit, totalPages: Math.ceil(total / limit) }, data: data.map(publicProduct) };
 };
-const getGiftCardById = async (id, includeInactive = false) => {
+const findGiftCardRecord = async (id, includeInactive = false) => {
     const result = await prisma_client_1.prismaC.giftCardProduct.findFirst({
         where: {
             OR: [{ id }, { slug: id }],
@@ -122,6 +186,17 @@ const getGiftCardById = async (id, includeInactive = false) => {
     if (!result)
         throw new apiAppError_1.ApiAppError(404, "Gift card not found");
     return result;
+};
+const getGiftCardById = async (id, includeInactive = false) => {
+    if (includeInactive)
+        return findGiftCardRecord(id, true);
+    const result = await prisma_client_1.prismaC.giftCardProduct.findFirst({
+        where: { OR: [{ id }, { slug: id }], deletedAt: null, status: client_1.ProductStatus.ACTIVE },
+        select: publicProductSelect,
+    });
+    if (!result)
+        throw new apiAppError_1.ApiAppError(404, "Gift card not found", undefined, "GIFT_CARD_NOT_FOUND");
+    return publicProduct(result);
 };
 const createGiftCard = async (payload, userId) => {
     const denominations = normalizeDenominations(payload);
@@ -145,21 +220,20 @@ const createGiftCard = async (payload, userId) => {
     });
 };
 const updateGiftCard = async (id, payload, userId) => {
-    const existing = await getGiftCardById(id, true);
-    const denominations = payload.denominations || payload.amounts ? normalizeDenominations(payload) : undefined;
+    const existing = await findGiftCardRecord(id, true);
+    if (payload.denominations || payload.amounts) {
+        throw new apiAppError_1.ApiAppError(400, "Update denominations through the denomination endpoints to preserve inventory and order history");
+    }
     return prisma_client_1.prismaC.giftCardProduct.update({
         where: { id: existing.id },
         data: {
             ...productData(payload, userId),
-            ...(denominations && {
-                denominations: { deleteMany: {}, create: denominations },
-            }),
         },
         include,
     });
 };
 const deleteGiftCard = async (id) => {
-    const existing = await getGiftCardById(id, true);
+    const existing = await findGiftCardRecord(id, true);
     return prisma_client_1.prismaC.giftCardProduct.update({
         where: { id: existing.id },
         data: { status: "ARCHIVED", deletedAt: new Date() },

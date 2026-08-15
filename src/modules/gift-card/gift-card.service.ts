@@ -1,14 +1,15 @@
-import { ProductStatus } from "../../generated/prisma/client";
+import { GiftCardCodeStatus, ProductStatus, type Prisma } from "../../generated/prisma/client";
 import { ApiAppError } from "../../utils/apiAppError";
 import { prismaC } from "../../utils/prisma-client";
 
 type Query = {
-  page?: string;
-  limit?: string;
+  page?: string | number;
+  limit?: string | number;
   search?: string;
-  categoryId?: string;
-  status?: string;
-  isFeatured?: string;
+  brand?: string;
+  minPriceBdt?: string;
+  maxPriceBdt?: string;
+  faceValue?: string;
 };
 
 type DenominationPayload = {
@@ -39,6 +40,70 @@ const include = {
   category: { select: { id: true, title: true, slug: true } },
   denominations: { orderBy: { sortOrder: "asc" as const } },
 };
+
+const publicDenominationSelect = {
+  id: true,
+  title: true,
+  cardValue: true,
+  cardCurrency: true,
+  sellingPriceBDT: true,
+  discountAmountBDT: true,
+  discountPercent: true,
+  discountLabel: true,
+  isPopular: true,
+  sortOrder: true,
+  _count: {
+    select: {
+      codes: {
+        where: {
+          status: GiftCardCodeStatus.AVAILABLE,
+          OR: [{ expiryDate: null }, { expiryDate: { gt: new Date() } }],
+        },
+      },
+    },
+  },
+} satisfies Prisma.GiftCardDenominationSelect;
+
+const publicProductSelect = {
+  id: true,
+  title: true,
+  slug: true,
+  brand: true,
+  description: true,
+  shortDescription: true,
+  image: true,
+  logoUrl: true,
+  bannerImage: true,
+  cardCurrency: true,
+  region: true,
+  deliveryType: true,
+  instructions: true,
+  termsAndConditions: true,
+  isFeatured: true,
+  denominations: {
+    where: { isActive: true },
+    orderBy: [{ sortOrder: "asc" as const }, { cardValue: "asc" as const }],
+    select: publicDenominationSelect,
+  },
+} satisfies Prisma.GiftCardProductSelect;
+
+const publicProduct = <T extends { title: string; image: string; denominations: Array<{
+  cardValue: unknown;
+  cardCurrency: string;
+  sellingPriceBDT: unknown;
+  _count: { codes: number };
+}> }>(product: T) => ({
+  ...product,
+  name: product.title,
+  imageUrl: product.image,
+  denominations: product.denominations.map(({ _count, ...denomination }) => ({
+    ...denomination,
+    faceValue: denomination.cardValue,
+    faceCurrency: denomination.cardCurrency,
+    sellingPriceBdt: denomination.sellingPriceBDT,
+    inStock: _count.codes > 0,
+  })),
+});
 
 const positiveNumber = (value: unknown, field: string) => {
   const number = Number(value);
@@ -123,15 +188,23 @@ const productData = (payload: GiftCardPayload, userId?: string) => ({
 const getGiftCards = async (query: Query) => {
   const page = Math.max(Number(query.page) || 1, 1);
   const limit = Math.min(Math.max(Number(query.limit) || 12, 1), 100);
-  if (query.status && !Object.values(ProductStatus).includes(query.status as ProductStatus)) {
-    throw new ApiAppError(400, "Invalid product status");
-  }
-  const where: any = {
+  const where: Prisma.GiftCardProductWhereInput = {
     deletedAt: null,
-    status: query.status ?? "ACTIVE",
-    ...(query.categoryId && { categoryId: query.categoryId }),
-    ...(query.isFeatured !== undefined && {
-      isFeatured: query.isFeatured === "true",
+    status: ProductStatus.ACTIVE,
+    ...(query.brand && { brand: { equals: query.brand, mode: "insensitive" } }),
+    ...((query.minPriceBdt || query.maxPriceBdt || query.faceValue) && {
+      denominations: {
+        some: {
+          isActive: true,
+          ...(query.minPriceBdt || query.maxPriceBdt ? {
+            sellingPriceBDT: {
+              ...(query.minPriceBdt && { gte: query.minPriceBdt }),
+              ...(query.maxPriceBdt && { lte: query.maxPriceBdt }),
+            },
+          } : {}),
+          ...(query.faceValue && { cardValue: query.faceValue }),
+        },
+      },
     }),
     ...(query.search && {
       OR: ["title", "brand", "slug"].map((field) => ({
@@ -145,14 +218,14 @@ const getGiftCards = async (query: Query) => {
       skip: (page - 1) * limit,
       take: limit,
       orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
-      include,
+      select: publicProductSelect,
     }),
     prismaC.giftCardProduct.count({ where }),
   ]);
-  return { meta: { total, page, limit, totalPages: Math.ceil(total / limit) }, data };
+  return { meta: { total, page, limit, totalPages: Math.ceil(total / limit) }, data: data.map(publicProduct) };
 };
 
-const getGiftCardById = async (id: string, includeInactive = false) => {
+const findGiftCardRecord = async (id: string, includeInactive = false) => {
   const result = await prismaC.giftCardProduct.findFirst({
     where: {
       OR: [{ id }, { slug: id }],
@@ -163,6 +236,16 @@ const getGiftCardById = async (id: string, includeInactive = false) => {
   });
   if (!result) throw new ApiAppError(404, "Gift card not found");
   return result;
+};
+
+const getGiftCardById = async (id: string, includeInactive = false) => {
+  if (includeInactive) return findGiftCardRecord(id, true);
+  const result = await prismaC.giftCardProduct.findFirst({
+    where: { OR: [{ id }, { slug: id }], deletedAt: null, status: ProductStatus.ACTIVE },
+    select: publicProductSelect,
+  });
+  if (!result) throw new ApiAppError(404, "Gift card not found", undefined, "GIFT_CARD_NOT_FOUND");
+  return publicProduct(result);
 };
 
 const createGiftCard = async (payload: GiftCardPayload, userId?: string) => {
@@ -188,23 +271,24 @@ const createGiftCard = async (payload: GiftCardPayload, userId?: string) => {
 };
 
 const updateGiftCard = async (id: string, payload: GiftCardPayload, userId?: string) => {
-  const existing = await getGiftCardById(id, true);
-  const denominations =
-    payload.denominations || payload.amounts ? normalizeDenominations(payload) : undefined;
+  const existing = await findGiftCardRecord(id, true);
+  if (payload.denominations || payload.amounts) {
+    throw new ApiAppError(
+      400,
+      "Update denominations through the denomination endpoints to preserve inventory and order history",
+    );
+  }
   return prismaC.giftCardProduct.update({
     where: { id: existing.id },
     data: {
       ...productData(payload, userId),
-      ...(denominations && {
-        denominations: { deleteMany: {}, create: denominations },
-      }),
     },
     include,
   });
 };
 
 const deleteGiftCard = async (id: string) => {
-  const existing = await getGiftCardById(id, true);
+  const existing = await findGiftCardRecord(id, true);
   return prismaC.giftCardProduct.update({
     where: { id: existing.id },
     data: { status: "ARCHIVED", deletedAt: new Date() },

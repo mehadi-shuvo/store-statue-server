@@ -72,10 +72,17 @@ const resolveProductOption = async (payload) => {
         });
         if (!option)
             throw new apiAppError_1.ApiAppError(404, "Gift card denomination not found");
+        const availableCodes = await prisma_client_1.prismaC.giftCardCode.count({
+            where: {
+                denominationId: option.id,
+                status: "AVAILABLE",
+                OR: [{ expiryDate: null }, { expiryDate: { gt: new Date() } }],
+            },
+        });
         return {
             productType,
             unitPrice: option.sellingPriceBDT,
-            stockQuantity: option.stockQuantity,
+            stockQuantity: availableCodes,
         };
     }
     if (productType === client_1.DigitalProductType.GAME_TOP_UP) {
@@ -230,10 +237,54 @@ const clearCart = async (userId) => {
     await prisma_client_1.prismaC.cartItem.deleteMany({ where: { cartId: cart.id } });
     return { message: "Cart cleared successfully" };
 };
+const addGiftCardItem = async (userId, payload) => {
+    const denomination = await prisma_client_1.prismaC.giftCardDenomination.findUnique({
+        where: { id: payload.denominationId },
+        select: { giftCardProductId: true },
+    });
+    if (!denomination)
+        throw new apiAppError_1.ApiAppError(404, "Gift card denomination not found", undefined, "GIFT_CARD_DENOMINATION_NOT_FOUND");
+    return addToCart({
+        userId,
+        productId: denomination.giftCardProductId,
+        giftCardDenominationId: payload.denominationId,
+        quantity: payload.quantity,
+    });
+};
+const updateGiftCardItem = async (userId, cartItemId, quantity) => {
+    const item = await prisma_client_1.prismaC.cartItem.findFirst({
+        where: { id: cartItemId, cart: { userId }, productType: client_1.DigitalProductType.GIFT_CARD },
+    });
+    if (!item?.giftCardProductId || !item.giftCardDenominationId) {
+        throw new apiAppError_1.ApiAppError(404, "Cart item not found");
+    }
+    return updateCartItem({
+        userId,
+        productId: item.giftCardProductId,
+        giftCardDenominationId: item.giftCardDenominationId,
+        quantity,
+    });
+};
+const removeGiftCardItem = async (userId, cartItemId) => {
+    const item = await prisma_client_1.prismaC.cartItem.findFirst({
+        where: { id: cartItemId, cart: { userId }, productType: client_1.DigitalProductType.GIFT_CARD },
+    });
+    if (!item?.giftCardProductId || !item.giftCardDenominationId) {
+        throw new apiAppError_1.ApiAppError(404, "Cart item not found");
+    }
+    return removeFromCart({
+        userId,
+        productId: item.giftCardProductId,
+        giftCardDenominationId: item.giftCardDenominationId,
+    });
+};
 exports.cartServices = {
     addToCart,
     updateCartItem,
     removeFromCart,
     getCart,
     clearCart,
+    addGiftCardItem,
+    updateGiftCardItem,
+    removeGiftCardItem,
 };

@@ -59,6 +59,7 @@ export const globalErrorHandler = (
       success: false,
       statusCode: error.statusCode,
       message: error.message,
+      ...(error.code ? { code: error.code } : {}),
       ...(error.statusCode < 500 && error.details !== undefined
         ? { details: error.details }
         : {}),

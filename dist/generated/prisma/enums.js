@@ -9,7 +9,7 @@
 * 🟢 You can import this file directly.
 */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.PaymentMethod = exports.DeliveryStatus = exports.PaymentStatus = exports.OrderStatus = exports.SubscriptionBillingCycle = exports.SubscriptionDeliveryType = exports.GameTopUpFulfillmentType = exports.GiftCardRegion = exports.GiftCardDeliveryType = exports.ProductInputType = exports.ProductStatus = exports.DigitalProductType = exports.OtpType = exports.UserRole = void 0;
+exports.PaymentMethod = exports.DeliveryStatus = exports.PaymentStatus = exports.OrderStatus = exports.SubscriptionBillingCycle = exports.SubscriptionDeliveryType = exports.GameTopUpFulfillmentType = exports.GiftCardRegion = exports.GiftCardCodeStatus = exports.GiftCardDeliveryType = exports.ProductInputType = exports.ProductStatus = exports.DigitalProductType = exports.OtpType = exports.UserRole = void 0;
 exports.UserRole = {
     CUSTOMER: 'CUSTOMER',
     ADMIN: 'ADMIN',
@@ -48,6 +48,13 @@ exports.GiftCardDeliveryType = {
     LINK: 'LINK',
     MANUAL: 'MANUAL',
     ACCOUNT_RECHARGE: 'ACCOUNT_RECHARGE'
+};
+exports.GiftCardCodeStatus = {
+    AVAILABLE: 'AVAILABLE',
+    RESERVED: 'RESERVED',
+    SOLD: 'SOLD',
+    DISABLED: 'DISABLED',
+    EXPIRED: 'EXPIRED'
 };
 exports.GiftCardRegion = {
     GLOBAL: 'GLOBAL',

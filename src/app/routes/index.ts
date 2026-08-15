@@ -10,10 +10,25 @@ import { reviewRouter } from "../../modules/review/review.route";
 import { subscriptionRouter } from "../../modules/subscription/subscription.route";
 import { adminRouter } from "../../modules/admin/admin.route";
 import { paymentRouter } from "../../modules/payment/routes/payment.route";
+import { giftCardAdminRouter } from "../../modules/gift-card/gift-card-admin.route";
+import { giftCardCartRouter } from "../../modules/gift-card/gift-card-cart.route";
+import { giftCardOrderRouter } from "../../modules/gift-card/gift-card-order.route";
 
 const router = Router();
 
 const moduleRoutes: TModuleRoute[] = [
+  {
+    path: "/admin",
+    route: giftCardAdminRouter,
+  },
+  {
+    path: "/me/gift-card-orders",
+    route: giftCardOrderRouter,
+  },
+  {
+    path: "/cart",
+    route: giftCardCartRouter,
+  },
   {
     path: "/user",
     route: userRouter,

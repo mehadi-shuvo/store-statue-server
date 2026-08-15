@@ -11,8 +11,23 @@ const review_route_1 = require("../../modules/review/review.route");
 const subscription_route_1 = require("../../modules/subscription/subscription.route");
 const admin_route_1 = require("../../modules/admin/admin.route");
 const payment_route_1 = require("../../modules/payment/routes/payment.route");
+const gift_card_admin_route_1 = require("../../modules/gift-card/gift-card-admin.route");
+const gift_card_cart_route_1 = require("../../modules/gift-card/gift-card-cart.route");
+const gift_card_order_route_1 = require("../../modules/gift-card/gift-card-order.route");
 const router = (0, express_1.Router)();
 const moduleRoutes = [
+    {
+        path: "/admin",
+        route: gift_card_admin_route_1.giftCardAdminRouter,
+    },
+    {
+        path: "/me/gift-card-orders",
+        route: gift_card_order_route_1.giftCardOrderRouter,
+    },
+    {
+        path: "/cart",
+        route: gift_card_cart_route_1.giftCardCartRouter,
+    },
     {
         path: "/user",
         route: user_route_1.userRouter,

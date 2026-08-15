@@ -27,7 +27,15 @@ export const validateRequest =
       }
 
       if (query) {
-        req.query = query.parse(req.query) as Request["query"];
+        // Express 5 exposes req.query as a getter without a setter. Define a
+        // request-local validated value so downstream handlers receive Zod's
+        // coercions/defaults without attempting to assign to the prototype getter.
+        Object.defineProperty(req, "query", {
+          value: query.parse(req.query) as Request["query"],
+          writable: true,
+          enumerable: true,
+          configurable: true,
+        });
       }
 
       return next();

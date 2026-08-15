@@ -1,0 +1,14 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.giftCardOrderRouter = void 0;
+const express_1 = require("express");
+const auth_middleware_1 = require("../../middlewares/auth.middleware");
+const rate_limit_middleware_1 = require("../../middlewares/rate-limit.middleware");
+const validate_middleware_1 = require("../../middlewares/validate.middleware");
+const gift_card_commerce_controller_1 = require("./gift-card-commerce.controller");
+const gift_card_validation_1 = require("./gift-card.validation");
+const router = (0, express_1.Router)();
+router.use(auth_middleware_1.authenticateUser, rate_limit_middleware_1.authenticatedUserRateLimiter);
+router.get("/", (0, validate_middleware_1.validateRequest)({ query: gift_card_validation_1.giftCardOrderQuerySchema }), gift_card_commerce_controller_1.giftCardCommerceController.listOrders);
+router.get("/:orderId", (0, validate_middleware_1.validateRequest)({ params: gift_card_validation_1.orderIdParamsSchema }), gift_card_commerce_controller_1.giftCardCommerceController.getOrder);
+exports.giftCardOrderRouter = router;
