@@ -54,6 +54,12 @@ export const securityConfig = {
       keyPrefix: "rl:user",
       message: "Too many authenticated requests. Please try again later.",
     },
+    payment: {
+      windowMs: fifteenMinutes,
+      limit: 20,
+      keyPrefix: "rl:payment",
+      message: "Too many payment requests. Please check the existing payment status before retrying.",
+    },
     admin: {
       windowMs: 60 * 1000,
       limit: 100,
@@ -87,8 +93,7 @@ export const securityConfig = {
   cors: {
     allowedOrigins: [
       ENV.CLIENT_URL,
-      "https://store-statue-client.vercel.app",
-      "http://localhost:3000",
+      ENV.FRONTEND_URL,
     ].filter(Boolean),
   },
 };

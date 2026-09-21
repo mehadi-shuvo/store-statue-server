@@ -1,64 +1,29 @@
 import catchAsync from "../../utils/catchAsync";
 import { gameTopUpServices } from "./game-top-up.service";
 
-const getTopUps = catchAsync(async (req, res) => {
-  const result = await gameTopUpServices.getTopUps(req.query);
-
-  res.status(200).json({
-    success: true,
-    message: "Top-up products fetched successfully",
-    data: result,
-  });
+const listGames = catchAsync(async (req, res) => {
+  const data = await gameTopUpServices.listPublicGames(req.query as never);
+  res.status(200).json({ success: true, message: "Games fetched successfully", data });
 });
 
-const getTopUpById = catchAsync(async (req, res) => {
-  const result = await gameTopUpServices.getTopUpById(req.params.id);
-
-  res.status(200).json({
-    success: true,
-    message: "Top-up product fetched successfully",
-    data: result,
-  });
+const getGame = catchAsync(async (req, res) => {
+  const data = await gameTopUpServices.getPublicGame(req.params.slug);
+  res.status(200).json({ success: true, message: "Game fetched successfully", data });
 });
 
-const createTopUp = catchAsync(async (req, res) => {
-  const result = await gameTopUpServices.createTopUp(req.body, req.authUser?.id);
-
-  res.status(201).json({
-    success: true,
-    message: "Top-up product created successfully",
-    data: result,
-  });
+const listPackages = catchAsync(async (req, res) => {
+  const data = await gameTopUpServices.listPublicPackages(req.params.gameId);
+  res.status(200).json({ success: true, message: "Top-up packages fetched successfully", data });
 });
 
-const updateTopUp = catchAsync(async (req, res) => {
-  const result = await gameTopUpServices.updateTopUp(
-    req.params.id,
-    req.body,
-    req.authUser?.id,
-  );
-
-  res.status(200).json({
-    success: true,
-    message: "Top-up product updated successfully",
-    data: result,
-  });
+const listAccountFields = catchAsync(async (req, res) => {
+  const data = await gameTopUpServices.listPublicAccountFields(req.params.gameId);
+  res.status(200).json({ success: true, message: "Account fields fetched successfully", data });
 });
 
-const deleteTopUp = catchAsync(async (req, res) => {
-  const result = await gameTopUpServices.deleteTopUp(req.params.id);
-
-  res.status(200).json({
-    success: true,
-    message: "Top-up product deleted successfully",
-    data: result,
-  });
-});
-
+// Old names remain aliases for callers of the pre-existing module.
 export const gameTopUpControllers = {
-  getTopUps,
-  getTopUpById,
-  createTopUp,
-  updateTopUp,
-  deleteTopUp,
+  listGames, getGame, listPackages, listAccountFields,
+  getTopUps: listGames,
+  getTopUpById: getGame,
 };

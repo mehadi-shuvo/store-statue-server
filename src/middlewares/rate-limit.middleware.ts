@@ -3,6 +3,7 @@ import { ipKeyGenerator, rateLimit } from "express-rate-limit";
 import { RedisStore } from "rate-limit-redis";
 import { createClient } from "redis";
 import { securityConfig } from "../config/security.config";
+import { ENV } from "../utils/env-config";
 import { logger } from "../utils/logger";
 import { registerAbusiveClient } from "./threat-protection.middleware";
 
@@ -19,7 +20,7 @@ let redisClient: ReturnType<typeof createClient> | null = null;
 let redisConnectStarted = false;
 
 const getRedisClient = () => {
-  if (!securityConfig.redisUrl) {
+  if (!securityConfig.redisUrl || ENV.NODE_ENV === "test") {
     return null;
   }
 
@@ -115,6 +116,10 @@ export const otpVerifyRateLimiter = createRateLimiter(securityConfig.rateLimits.
 export const resendOtpRateLimiter = createRateLimiter(securityConfig.rateLimits.resendOtp);
 export const authenticatedUserRateLimiter = createRateLimiter({
   ...securityConfig.rateLimits.authenticatedUser,
+  keyByUser: true,
+});
+export const paymentRateLimiter = createRateLimiter({
+  ...securityConfig.rateLimits.payment,
   keyByUser: true,
 });
 export const adminRateLimiter = createRateLimiter({

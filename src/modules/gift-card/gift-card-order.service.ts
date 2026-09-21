@@ -1,7 +1,8 @@
-import { DeliveryStatus, DigitalProductType, OrderStatus, type Prisma } from "../../generated/prisma/client";
+import { DeliveryStatus, DigitalProductType, GiftCardCodeStatus, OrderStatus, PaymentStatus, type Prisma } from "../../generated/prisma/client";
 import { prismaC } from "../../utils/prisma-client";
 import { giftCardError } from "./gift-card.errors";
 import { moneyString } from "./gift-card.utils";
+import { decryptGiftCardSecret } from "./gift-card-crypto";
 
 type PageQuery = { page: number; limit: number };
 type AdminQuery = PageQuery & {
@@ -52,6 +53,7 @@ const getForCustomer = async (userId: string, orderId: string) => {
   const order = await prismaC.order.findFirst({
     where: { id: orderId, userId, items: { some: { productType: DigitalProductType.GIFT_CARD } } },
     include: {
+      payment: { select: { paymentStatus: true } },
       items: {
         where: { productType: DigitalProductType.GIFT_CARD },
         include: {
@@ -63,7 +65,9 @@ const getForCustomer = async (userId: string, orderId: string) => {
     },
   });
   if (!order) throw giftCardError(404, "ORDER_NOT_FOUND", "Gift card order not found");
-  const canReveal = order.status === OrderStatus.COMPLETED;
+  const canReveal = order.status === OrderStatus.COMPLETED
+    && order.paymentStatus === PaymentStatus.PAID
+    && order.payment?.paymentStatus === PaymentStatus.PAID;
   return {
     id: order.id,
     orderNumber: order.orderNumber,
@@ -82,12 +86,65 @@ const getForCustomer = async (userId: string, orderId: string) => {
       priceBdt: moneyString(item.unitPrice),
       quantity: item.quantity,
       deliveryStatus: item.deliveryStatus,
-      deliveries: canReveal ? item.giftCardDeliveries.filter((delivery) => delivery.deliveryStatus === DeliveryStatus.DELIVERED).map((delivery) => ({
-        code: delivery.inventoryCode.code,
-        pin: delivery.inventoryCode.pin,
+      deliveries: canReveal ? item.giftCardDeliveries.filter((delivery) => delivery.inventoryCode.status === GiftCardCodeStatus.SOLD).map((delivery) => ({
+        code: decryptGiftCardSecret(delivery.inventoryCode.code)!,
+        pin: decryptGiftCardSecret(delivery.inventoryCode.pin),
         expiryDate: delivery.expiryDateSnapshot,
       })) : [],
     })),
+  };
+};
+
+const getDeliveryForCustomer = async (userId: string, orderId: string) => {
+  const order = await prismaC.order.findFirst({
+    where: {
+      id: orderId,
+      userId,
+      status: OrderStatus.COMPLETED,
+      paymentStatus: PaymentStatus.PAID,
+      payment: { is: { paymentStatus: PaymentStatus.PAID } },
+      items: { some: { productType: DigitalProductType.GIFT_CARD } },
+    },
+    select: {
+      id: true,
+      orderNumber: true,
+      payment: { select: { paymentMethod: true, transactionId: true } },
+      items: {
+        where: { productType: DigitalProductType.GIFT_CARD },
+        select: {
+          productTitle: true,
+          brandSnapshot: true,
+          faceValueSnapshot: true,
+          faceCurrencySnapshot: true,
+          giftCardDeliveries: {
+            where: { inventoryCode: { status: GiftCardCodeStatus.SOLD } },
+            select: {
+              expiryDateSnapshot: true,
+              deliveryStatus: true,
+              inventoryCode: { select: { code: true, pin: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+  if (!order) throw giftCardError(404, "DELIVERY_NOT_FOUND", "Paid gift-card delivery not found");
+  return {
+    orderId: order.id,
+    orderNumber: order.orderNumber,
+    products: order.items.map((item) => ({
+      name: item.productTitle,
+      brand: item.brandSnapshot,
+      value: item.faceValueSnapshot ? moneyString(item.faceValueSnapshot) : null,
+      currency: item.faceCurrencySnapshot,
+      delivery: item.giftCardDeliveries.map((delivery) => ({
+        code: decryptGiftCardSecret(delivery.inventoryCode.code)!,
+        pin: decryptGiftCardSecret(delivery.inventoryCode.pin),
+        expiryDate: delivery.expiryDateSnapshot,
+        emailStatus: delivery.deliveryStatus,
+      })),
+    })),
+    payment: { provider: order.payment?.paymentMethod, trxId: order.payment?.transactionId },
   };
 };
 
@@ -129,4 +186,4 @@ const getForAdmin = async (orderId: string) => {
   return order;
 };
 
-export const giftCardOrderService = { listForCustomer, getForCustomer, listForAdmin, getForAdmin };
+export const giftCardOrderService = { listForCustomer, getForCustomer, getDeliveryForCustomer, listForAdmin, getForAdmin };

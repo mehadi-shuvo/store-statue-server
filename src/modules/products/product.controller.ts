@@ -140,7 +140,7 @@ const updateProduct = catchAsync(async (req, res) => {
  */
 const deleteProduct = catchAsync(async (req, res) => {
   const { id } = req.params;
-  const result = await productServices.deleteProduct(id);
+  const result = await productServices.deleteProduct(id, req.authUser?.id);
 
   res.status(200).json({
     success: true,
@@ -176,7 +176,7 @@ const getSingleProduct = catchAsync(async (req, res) => {
 });
 
 export const bulkUploadProductsController = catchAsync(async (req, res) => {
-  const result = await productServices.bulkUploadProducts(req.body.products);
+  const result = await productServices.bulkUploadProducts(req.body.products, req.authUser?.id);
 
   res.status(201).json({
     success: true,

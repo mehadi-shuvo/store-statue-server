@@ -3,9 +3,23 @@ import { cartServices } from "../cart/cart.service";
 import { giftCardOrderService } from "./gift-card-order.service";
 import { giftCardPurchaseService } from "./gift-card-purchase.service";
 
+const checkoutKey = (value: string | string[] | undefined) => {
+  const key = Array.isArray(value) ? value[0] : value;
+  return key?.trim().slice(0, 128) || undefined;
+};
+
+const buyNow = catchAsync(async (req, res) => {
+  const data = await giftCardPurchaseService.buyNow(
+    req.authUser!.id,
+    req.body,
+    checkoutKey(req.headers["idempotency-key"]),
+  );
+  res.status(201).json({ success: true, message: "Gift-card checkout created", data });
+});
+
 const instantBuy = catchAsync(async (req, res) => {
-  const data = await giftCardPurchaseService.instantBuy(req.authUser!.id, req.body);
-  res.status(201).json({ success: true, message: "Gift card order fulfilled successfully", data });
+  const data = await giftCardPurchaseService.instantBuy(req.authUser!.id, req.body, checkoutKey(req.headers["idempotency-key"]));
+  res.status(201).json({ success: true, message: "Gift-card checkout created", data });
 });
 
 const addCartItem = catchAsync(async (req, res) => {
@@ -34,8 +48,8 @@ const clearCart = catchAsync(async (req, res) => {
 });
 
 const checkoutCart = catchAsync(async (req, res) => {
-  const data = await giftCardPurchaseService.checkoutCart(req.authUser!.id, req.body);
-  res.status(201).json({ success: true, message: "Gift card cart fulfilled successfully", data });
+  const data = await giftCardPurchaseService.checkoutCart(req.authUser!.id, req.body, checkoutKey(req.headers["idempotency-key"]));
+  res.status(201).json({ success: true, message: "Gift-card checkout created", data });
 });
 
 const listOrders = catchAsync(async (req, res) => {
@@ -48,8 +62,14 @@ const getOrder = catchAsync(async (req, res) => {
   res.status(200).json({ success: true, message: "Gift card order fetched successfully", data });
 });
 
+const getDelivery = catchAsync(async (req, res) => {
+  const data = await giftCardOrderService.getDeliveryForCustomer(req.authUser!.id, req.params.orderId);
+  res.status(200).json({ success: true, message: "Gift-card delivery fetched successfully", data });
+});
+
 export const giftCardCommerceController = {
   instantBuy,
+  buyNow,
   addCartItem,
   updateCartItem,
   removeCartItem,
@@ -58,4 +78,5 @@ export const giftCardCommerceController = {
   checkoutCart,
   listOrders,
   getOrder,
+  getDelivery,
 };

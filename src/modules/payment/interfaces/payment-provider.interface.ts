@@ -1,17 +1,6 @@
-import {
-  ProviderCreatePaymentInput,
-  ProviderCreatePaymentResponse,
-  ProviderExecutePaymentInput,
-  ProviderExecutePaymentResponse,
-  ProviderQueryPaymentInput,
-  ProviderQueryPaymentResponse,
-  ProviderVerifyPaymentInput,
-} from "../types/payment.types";
-
+import type { PaymentProviderName, ProviderCreatePaymentInput, ProviderCreatePaymentResponse, ProviderQueryPaymentResponse } from "../types/payment.types";
 export interface IPaymentProvider {
-  readonly name: "mock" | "bkash";
+  readonly name: PaymentProviderName;
   createPayment(input: ProviderCreatePaymentInput): Promise<ProviderCreatePaymentResponse>;
-  executePayment(input: ProviderExecutePaymentInput): Promise<ProviderExecutePaymentResponse>;
-  queryPayment(input: ProviderQueryPaymentInput): Promise<ProviderQueryPaymentResponse>;
-  verifyPayment(input: ProviderVerifyPaymentInput): Promise<ProviderQueryPaymentResponse>;
+  queryPayment(input: { paymentId: string }): Promise<ProviderQueryPaymentResponse>;
 }

@@ -123,6 +123,12 @@ export const instantBuySchema = deliveryEmailSchema.safeExtend({
   quantity: z.number().int().min(1).max(20).default(1),
 });
 
+export const buyNowSchema = z.object({
+  // Accepts a denomination id, or a product id when it has exactly one active denomination.
+  productId: id,
+  quantity: z.number().int().min(1).max(20).default(1),
+}).strict();
+
 export const giftCardOrderQuerySchema = paginationSchema;
 
 export const adminGiftCardOrderQuerySchema = paginationSchema.extend({

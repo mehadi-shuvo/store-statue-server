@@ -1,62 +1,29 @@
-import { PaymentStatus } from "../../../generated/prisma/client";
-
-export type PaymentProviderName = "mock" | "bkash";
-export type MockPaymentScenario = "success" | "failure" | "cancel";
-
-export type CreatePaymentInput = {
-  orderId: string;
-  amount: number;
-  currency: string;
-  userId: string;
-};
-
+export type PaymentProviderName = "mock" | "aamarpay";
+export type GatewayPaymentStatus = "PENDING" | "PAID" | "FAILED" | "CANCELLED";
+export type CallbackOutcome = "success" | "failed" | "cancelled" | "processing";
 export type ProviderCreatePaymentInput = {
   orderId: string;
-  amount: number;
+  transactionId: string;
+  amount: string;
   currency: string;
-  invoiceNumber: string;
+  customer: {
+    name: string;
+    email: string;
+    phone: string | null;
+    addressLine?: string;
+    city?: string;
+    country?: string;
+    postalCode?: string | null;
+  };
 };
-
-export type ProviderExecutePaymentInput = {
-  paymentId: string;
-  amount: number;
-  scenario?: MockPaymentScenario;
-};
-
-export type ProviderQueryPaymentInput = {
-  paymentId: string;
-};
-
-export type ProviderVerifyPaymentInput = {
-  paymentId: string;
-  transactionId?: string | null;
-};
-
-export type ProviderCreatePaymentResponse = {
-  paymentID: string;
-  bkashURL: string;
-  statusCode: string;
-  statusMessage: string;
-  raw: Record<string, unknown>;
-};
-
-export type ProviderExecutePaymentResponse = {
-  trxID: string | null;
-  paymentID: string;
-  amount: number;
-  transactionStatus: "Completed" | "Failed" | "Cancelled";
-  raw: Record<string, unknown>;
-};
-
+export type ProviderCreatePaymentResponse = { paymentId: string; paymentUrl: string };
 export type ProviderQueryPaymentResponse = {
-  paymentID: string;
-  transactionStatus: "Completed" | "Failed" | "Cancelled" | "Initiated" | "Pending";
-  trxID?: string | null;
-  amount?: number;
-  raw: Record<string, unknown>;
-};
-
-export type PaymentExecutionResult = {
+  paymentId: string;
   transactionId: string | null;
-  status: PaymentStatus;
+  status: GatewayPaymentStatus;
+  amount: string;
+  currency?: string;
+  merchantCurrency?: string;
+  // Only allowlisted, non-sensitive verification fields are persisted.
+  raw: Record<string, string | null>;
 };

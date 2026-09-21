@@ -7,8 +7,10 @@ import {
   forgotPasswordSchema,
   loginSchema,
   parseRequestBody,
+  resendEmailVerificationSchema,
   resetPasswordSchema,
   updateCustomerProfileSchema,
+  verifyEmailSchema,
 } from "./user.validation";
 
 const ACCESS_TOKEN_COOKIE_MAX_AGE = 24 * 60 * 60 * 1000;
@@ -35,8 +37,30 @@ const createUser = catchAsync(async (req, res) => {
   const user = await userService.createUser(payload);
   res.status(201).json({
     success: true,
-    message: "Account created successfully",
+    message: user.verificationEmailSent
+      ? "Account created successfully. Check your email for the verification code."
+      : "Account created successfully. Request a new verification email to verify your account.",
     data: user,
+  });
+});
+
+const verifyEmail = catchAsync(async (req, res) => {
+  const payload = parseRequestBody(verifyEmailSchema, req.body);
+  const result = await userService.verifyEmail(payload);
+  res.status(200).json({
+    success: true,
+    message: "Email verified successfully",
+    data: result,
+  });
+});
+
+const resendEmailVerification = catchAsync(async (req, res) => {
+  const { email } = parseRequestBody(resendEmailVerificationSchema, req.body);
+  const result = await userService.resendEmailVerification(email);
+  res.status(200).json({
+    success: true,
+    message: result.message,
+    data: { cooldownSeconds: result.cooldownSeconds },
   });
 });
 
@@ -140,6 +164,8 @@ export const userController = {
   updateCustomerProfile,
   deleteCustomerProfile,
   forgotPassword,
+  verifyEmail,
+  resendEmailVerification,
   resetPassword,
   getUsers,
 };

@@ -1,9 +1,10 @@
 import catchAsync from "../../utils/catchAsync";
+import { sendSuccess } from "../../utils/api-response";
 import { giftCardAdminService } from "./gift-card-admin.service";
 import { giftCardOrderService } from "./gift-card-order.service";
 
-const response = (res: any, status: number, message: string, data: unknown) =>
-  res.status(status).json({ success: true, message, data });
+const response = (res: Parameters<typeof sendSuccess>[0], statusCode: number, message: string, data: unknown) =>
+  sendSuccess(res, { statusCode, message, data });
 
 const listProducts = catchAsync(async (req, res) => response(res, 200, "Gift cards fetched successfully", await giftCardAdminService.listProducts(req.query as never)));
 const getProduct = catchAsync(async (req, res) => response(res, 200, "Gift card fetched successfully", await giftCardAdminService.getProduct(req.params.giftCardId)));

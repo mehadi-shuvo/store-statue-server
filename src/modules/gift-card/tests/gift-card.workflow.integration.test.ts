@@ -1,3 +1,4 @@
+import { mockPaymentProvider } from "../../payment/providers/mock-payment.provider";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
@@ -8,7 +9,9 @@ import { giftCardAdminService } from "../gift-card-admin.service";
 import { giftCardOrderService } from "../gift-card-order.service";
 import { giftCardPurchaseService } from "../gift-card-purchase.service";
 import { giftCardServices } from "../gift-card.service";
-import { digitalDeliveryProvider } from "../providers/console-digital-delivery.provider";
+import { paymentService } from "../../payment/services/payment-service.factory";
+import { giftCardEmailSender } from "../gift-card-fulfillment.service";
+import { ENV } from "../../../utils/env-config";
 
 const run = process.env.RUN_GIFT_CARD_INTEGRATION_TESTS === "true";
 
@@ -18,16 +21,18 @@ test("admin, inventory, catalog, cart, purchase, and owned history workflow", { 
     data: { email: `gift-card-admin-${marker}@example.test`, name: "Gift Card Test Admin", password: "test-only", role: UserRole.ADMIN },
   });
   const customer = await prismaC.user.create({
-    data: { email: `gift-card-customer-${marker}@example.test`, name: "Gift Card Test Customer", password: "test-only" },
+    data: { email: `gift-card-customer-${marker}@example.test`, name: "Gift Card Test Customer", password: "test-only", isEmailVerified: true },
   });
   const otherCustomer = await prismaC.user.create({
     data: { email: `gift-card-other-${marker}@example.test`, name: "Other Customer", password: "test-only" },
   });
   let productId: string | undefined;
   let denominationId: string | undefined;
-  const originalDeliver = digitalDeliveryProvider.deliver;
+  const originalDeliver = giftCardEmailSender.send;
+  const originalEncryptionKey = ENV.GIFT_CARD_ENCRYPTION_KEY;
+  ENV.GIFT_CARD_ENCRYPTION_KEY = Buffer.alloc(32, 9).toString("base64");
   const deliveries: unknown[] = [];
-  digitalDeliveryProvider.deliver = async (payload) => { deliveries.push(payload); };
+  giftCardEmailSender.send = async (...payload) => { deliveries.push(payload); };
 
   try {
     const product = await giftCardAdminService.createProduct(admin.id, {
@@ -58,6 +63,12 @@ test("admin, inventory, catalog, cart, purchase, and owned history workflow", { 
       { code: `TEST-${marker}-002`, pin: "1111" },
       { code: `TEST-${marker}-003` },
     ]);
+    await giftCardAdminService.updateProduct(admin.id, product.id, { isActive: false });
+    await assert.rejects(
+      () => giftCardPurchaseService.instantBuy(customer.id, { denominationId: denomination.id, quantity: 1, useAccountEmail: true }),
+      (error: any) => error.code === "GIFT_CARD_INACTIVE",
+    );
+    await giftCardAdminService.updateProduct(admin.id, product.id, { isActive: true });
     await assert.rejects(
       () => giftCardAdminService.addCode(admin.id, denomination.id, { code: `TEST-${marker}-001` }),
       (error: any) => error.code === "GIFT_CARD_CODE_ALREADY_EXISTS",
@@ -73,10 +84,6 @@ test("admin, inventory, catalog, cart, purchase, and owned history workflow", { 
     await cartServices.removeGiftCardItem(customer.id, added.id);
     await cartServices.addGiftCardItem(customer.id, { denominationId: denomination.id, quantity: 1 });
 
-    await assert.rejects(
-      () => giftCardPurchaseService.instantBuy(customer.id, { denominationId: denomination.id, quantity: 1, useAccountEmail: false }),
-      (error: any) => error.code === "DELIVERY_EMAIL_REQUIRED",
-    );
     const instantOrder = await giftCardPurchaseService.instantBuy(customer.id, {
       denominationId: denomination.id,
       quantity: 1,
@@ -84,10 +91,21 @@ test("admin, inventory, catalog, cart, purchase, and owned history workflow", { 
       deliveryEmail: "Delivery@Example.Test",
     });
     assert.equal(instantOrder.totalBdt, "1280.00");
-    assert.equal(instantOrder.deliveryEmail, "delivery@example.test");
+    assert.equal(instantOrder.deliveryEmail, customer.email);
+    assert.equal(JSON.stringify(instantOrder).includes(`TEST-${marker}`), false);
+    assert.equal((await prismaC.giftCardCode.count({ where: { denominationId: denomination.id, status: GiftCardCodeStatus.RESERVED } })), 1);
+    const pendingDetail = await giftCardOrderService.getForCustomer(customer.id, instantOrder.id);
+    assert.equal(pendingDetail.items[0].deliveries.length, 0);
+    mockPaymentProvider.settle(instantOrder.paymentId);
+    await paymentService.executePayment(instantOrder.paymentId, customer.id);
+    const repeated = await paymentService.handleCallback(instantOrder.paymentId);
+    assert.equal(repeated.outcome, "success");
+    assert.equal(deliveries.length, 1, "duplicate callback must not send a second delivery");
 
     const cartOrder = await giftCardPurchaseService.checkoutCart(customer.id, { useAccountEmail: true });
     assert.equal(cartOrder.deliveryEmail, customer.email);
+    mockPaymentProvider.settle(cartOrder.paymentId);
+    await paymentService.executePayment(cartOrder.paymentId, customer.id);
     assert.equal((await cartServices.getCart(customer.id)).items.length, 0);
     assert.equal(deliveries.length, 2);
 
@@ -115,14 +133,22 @@ test("admin, inventory, catalog, cart, purchase, and owned history workflow", { 
       () => giftCardOrderService.getForCustomer(otherCustomer.id, instantOrder.id),
       (error: any) => error.code === "ORDER_NOT_FOUND",
     );
-    const adminOrders = await giftCardOrderService.listForAdmin({ page: 1, limit: 20, email: "delivery@example.test" });
-    assert.equal(adminOrders.data.length, 1);
+    const delivery = await giftCardOrderService.getDeliveryForCustomer(customer.id, instantOrder.id);
+    assert.equal(delivery.products[0].delivery.length, 1);
+    await assert.rejects(
+      () => giftCardOrderService.getDeliveryForCustomer(otherCustomer.id, instantOrder.id),
+      (error: any) => error.code === "DELIVERY_NOT_FOUND",
+    );
+    const adminOrders = await giftCardOrderService.listForAdmin({ page: 1, limit: 20, email: customer.email });
+    assert.equal(adminOrders.data.length, 2);
     assert.equal((await giftCardOrderService.getForAdmin(instantOrder.id)).id, instantOrder.id);
   } finally {
-    digitalDeliveryProvider.deliver = originalDeliver;
+    giftCardEmailSender.send = originalDeliver;
+    ENV.GIFT_CARD_ENCRYPTION_KEY = originalEncryptionKey;
     const orders = await prismaC.order.findMany({ where: { userId: customer.id }, select: { id: true } });
     const orderIds = orders.map((order) => order.id);
     await prismaC.giftCardDelivery.deleteMany({ where: { orderItem: { orderId: { in: orderIds } } } });
+    await prismaC.payment.deleteMany({ where: { orderId: { in: orderIds } } });
     if (denominationId) await prismaC.giftCardCode.deleteMany({ where: { denominationId } });
     await prismaC.orderItem.deleteMany({ where: { orderId: { in: orderIds } } });
     await prismaC.order.deleteMany({ where: { id: { in: orderIds } } });

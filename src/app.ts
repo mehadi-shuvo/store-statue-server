@@ -17,6 +17,7 @@ import {
 } from "./middlewares/threat-protection.middleware";
 import { httpLogger } from "./utils/logger";
 import { securityConfig } from "./config/security.config";
+import { registerApiDocumentation } from "./docs/swagger";
 
 const app: Express = express();
 
@@ -32,6 +33,14 @@ app.use("/api", (_req, res, next) => {
 });
 
 app.use(httpLogger);
+registerApiDocumentation(app);
+app.get("/health", (_req, res) => {
+  res.status(200).json({
+    status: "ok",
+    uptimeSeconds: Math.floor(process.uptime()),
+    timestamp: new Date().toISOString(),
+  });
+});
 app.use(requestAbortLogger);
 app.use(temporaryIpBlockMiddleware);
 app.use(requestSizeAndUrlGuard);

@@ -5,6 +5,7 @@ import {
 } from "../../generated/prisma/client";
 import { ApiAppError } from "../../utils/apiAppError";
 import { prismaC } from "../../utils/prisma-client";
+import { validateAccountDetails } from "../game-top-up/game-top-up.utils";
 
 const cartItemInclude = {
   giftCardProduct: true,
@@ -161,6 +162,21 @@ const addToCart = async (
   }
 
   const option = await resolveProductOption(payload);
+  let normalizedCustomerInputs = payload.customerInputs;
+  if (option.productType === DigitalProductType.GAME_TOP_UP) {
+    const fields = await prismaC.gameTopUpInputField.findMany({
+      where: { gameTopUpProductId: payload.productId, isActive: true },
+      orderBy: { sortOrder: "asc" },
+    });
+    const raw = payload.customerInputs ?? {};
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      throw new ApiAppError(422, "Game account details must be an object");
+    }
+    normalizedCustomerInputs = validateAccountDetails(
+      fields,
+      raw as Record<string, unknown>,
+    );
+  }
   if (option.stockQuantity !== null && option.stockQuantity < payload.quantity) {
     throw new ApiAppError(400, "Insufficient product stock");
   }
@@ -192,8 +208,8 @@ const addToCart = async (
       data: {
         quantity: newQuantity,
         unitPrice: option.unitPrice,
-        ...(payload.customerInputs !== undefined
-          ? { customerInputs: payload.customerInputs }
+        ...(normalizedCustomerInputs !== undefined
+          ? { customerInputs: normalizedCustomerInputs }
           : {}),
       },
       include: cartItemInclude,
@@ -207,8 +223,8 @@ const addToCart = async (
       optionKey,
       quantity: payload.quantity,
       unitPrice: option.unitPrice,
-      ...(payload.customerInputs !== undefined
-        ? { customerInputs: payload.customerInputs }
+      ...(normalizedCustomerInputs !== undefined
+        ? { customerInputs: normalizedCustomerInputs }
         : {}),
       ...(option.productType === DigitalProductType.GIFT_CARD
         ? {

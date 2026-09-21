@@ -2,15 +2,49 @@ import app from "./app";
 import { ENV } from "./utils/env-config";
 import { logger } from "./utils/logger";
 import { prismaC } from "./utils/prisma-client";
+import { paymentService } from "./modules/payment/services/payment-service.factory";
+import { assertGiftCardEncryptionConfigured } from "./modules/gift-card/gift-card-crypto";
+import { retryGameTopUpFulfillments } from "./modules/game-top-up/game-top-up-fulfillment.service";
+import { gameTopUpNotificationService } from "./modules/game-top-up/game-top-up-notification.service";
 
-const port = Number(ENV.PORT || 5000);
-if (!Number.isInteger(port) || port < 1 || port > 65535) {
-  throw new Error("PORT must be an integer between 1 and 65535");
-}
+const port = ENV.PORT;
+if (ENV.PAYMENT_PROVIDER === "aamarpay") assertGiftCardEncryptionConfigured();
 
 const server = app.listen(port, () => {
   logger.info({ port }, "Server is running");
 });
+
+let paymentWorkerRunning = false;
+const runPaymentWorker = async () => {
+  if (paymentWorkerRunning) return;
+  paymentWorkerRunning = true;
+  try {
+    await paymentService.reconcileExpiredGiftCardReservations();
+    await paymentService.reconcileUnknownPayments();
+  } catch (error) {
+    logger.warn({ error }, "Payment reconciliation worker failed");
+  } finally {
+    paymentWorkerRunning = false;
+  }
+};
+const reservationSweep = setInterval(
+  () => void runPaymentWorker(),
+  Math.max(10_000, ENV.GIFT_CARD_RESERVATION_SWEEP_MS),
+);
+reservationSweep.unref();
+
+let topUpWorkerRunning = false;
+const topUpWorker = setInterval(() => {
+  if (topUpWorkerRunning) return;
+  topUpWorkerRunning = true;
+  void retryGameTopUpFulfillments()
+    .then(() => gameTopUpNotificationService.retryTopUpNotifications())
+    .catch((error) => logger.warn({ error }, "Game top-up worker failed"))
+    .finally(() => {
+      topUpWorkerRunning = false;
+    });
+}, ENV.TOP_UP_WORKER_INTERVAL_MS);
+topUpWorker.unref();
 
 server.on("error", (error) => {
   logger.fatal({ error }, "Server failed to start");
@@ -21,6 +55,8 @@ let shuttingDown = false;
 const shutdown = (signal: NodeJS.Signals) => {
   if (shuttingDown) return;
   shuttingDown = true;
+  clearInterval(reservationSweep);
+  clearInterval(topUpWorker);
   logger.info({ signal }, "Shutting down server");
 
   server.close(async (error) => {

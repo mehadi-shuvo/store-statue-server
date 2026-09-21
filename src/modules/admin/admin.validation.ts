@@ -108,11 +108,8 @@ export const updateDeliveryStatusSchema = z
 
 export const verifyPaymentIssueSchema = z
   .object({
-    paymentStatus: z.nativeEnum(PaymentStatus),
-    transactionId: z.string().trim().max(255, "Transaction id is too long").nullable().optional(),
-    providerPaymentId: z.string().trim().max(255, "Provider payment id is too long").nullable().optional(),
-    failureReason: z.string().trim().max(1000, "Failure reason is too long").nullable().optional(),
-    rawResponse: z.unknown().optional(),
+    paymentStatus: z.enum([PaymentStatus.REFUND_PENDING, PaymentStatus.REFUNDED, PaymentStatus.REFUND_FAILED]),
+    failureReason: z.string().trim().min(3, "Resolution note is required").max(1000, "Resolution note is too long"),
   })
   .strict();
 

@@ -5,6 +5,11 @@ import {
 } from "../../generated/prisma/client";
 import { prismaC } from "../../utils/prisma-client";
 import { giftCardError } from "./gift-card.errors";
+import {
+  decryptGiftCardSecret,
+  encryptGiftCardSecret,
+  giftCardSecretHash,
+} from "./gift-card-crypto";
 import { maskGiftCardCode, moneyString } from "./gift-card.utils";
 import type {
   CreateDenominationInput,
@@ -210,8 +215,9 @@ const deleteDenomination = async (actorId: string, id: string) => {
 const codeData = (input: InventoryCodeInput, actorId: string) => {
   const expiryDate = input.expiryDate ? new Date(input.expiryDate) : null;
   return {
-    code: input.code,
-    pin: input.pin,
+    code: encryptGiftCardSecret(input.code)!,
+    codeHash: giftCardSecretHash(input.code),
+    pin: encryptGiftCardSecret(input.pin),
     serialNo: input.serialNumber,
     expiryDate,
     status: expiryDate && expiryDate <= new Date() ? GiftCardCodeStatus.EXPIRED : GiftCardCodeStatus.AVAILABLE,
@@ -222,20 +228,29 @@ const codeData = (input: InventoryCodeInput, actorId: string) => {
 
 const addCode = async (actorId: string, denominationId: string, input: InventoryCodeInput) => {
   await assertDenomination(denominationId);
-  const existing = await prismaC.giftCardCode.findUnique({ where: { code: input.code }, select: { id: true } });
+  const existing = await prismaC.giftCardCode.findFirst({
+    where: { OR: [{ codeHash: giftCardSecretHash(input.code) }, { code: input.code }] },
+    select: { id: true },
+  });
   if (existing) throw giftCardError(409, "GIFT_CARD_CODE_ALREADY_EXISTS", "Gift card code already exists");
   const code = await prismaC.giftCardCode.create({ data: { denominationId, ...codeData(input, actorId) } });
   await audit(actorId, "GIFT_CARD_CODE_CREATED", "GiftCardCode", code.id, { denominationId });
-  return { ...code, code: maskGiftCardCode(code.code), pin: code.pin ? "****" : null };
+  return { ...code, code: maskGiftCardCode(input.code), pin: input.pin ? "****" : null };
 };
 
 const addCodesBulk = async (actorId: string, denominationId: string, inputs: InventoryCodeInput[]) => {
   await assertDenomination(denominationId);
-  const normalized = inputs.map((item) => item.code);
+  const normalized = inputs.map((item) => item.code.trim());
   const duplicatesInRequest = normalized.filter((code, index) => normalized.indexOf(code) !== index);
-  const existing = await prismaC.giftCardCode.findMany({ where: { code: { in: normalized } }, select: { code: true } });
+  const hashes = normalized.map(giftCardSecretHash);
+  const existing = await prismaC.giftCardCode.findMany({
+    where: { OR: [{ codeHash: { in: hashes } }, { code: { in: normalized } }] },
+    select: { codeHash: true, code: true },
+  });
   if (duplicatesInRequest.length || existing.length) {
-    const duplicates = [...new Set([...duplicatesInRequest, ...existing.map((item) => item.code)])];
+    const existingHashes = new Set(existing.map((item) => item.codeHash));
+    const legacyCodes = new Set(existing.filter((item) => !item.codeHash).map((item) => item.code));
+    const duplicates = [...new Set([...duplicatesInRequest, ...normalized.filter((code) => existingHashes.has(giftCardSecretHash(code)) || legacyCodes.has(code))])];
     throw giftCardError(409, "GIFT_CARD_CODE_ALREADY_EXISTS", "One or more gift card codes already exist", { duplicates: duplicates.map(maskGiftCardCode) });
   }
   const created = await prismaC.giftCardCode.createMany({
@@ -262,7 +277,7 @@ const listCodes = async (denominationId: string, query: InventoryQuery) => {
     prismaC.giftCardCode.count({ where }),
   ]);
   return {
-    data: codes.map((item) => ({ ...item, code: maskGiftCardCode(item.code), pin: item.pin ? "****" : null })),
+    data: codes.map((item) => ({ ...item, code: maskGiftCardCode(decryptGiftCardSecret(item.code)!), pin: item.pin ? "****" : null })),
     meta: { total, page: query.page, limit: query.limit, totalPages: Math.ceil(total / query.limit) },
   };
 };
@@ -270,7 +285,11 @@ const listCodes = async (denominationId: string, query: InventoryQuery) => {
 const getCode = async (id: string) => {
   const code = await prismaC.giftCardCode.findUnique({ where: { id }, include: { denomination: { include: { giftCardProduct: true } } } });
   if (!code) throw giftCardError(404, "GIFT_CARD_CODE_NOT_FOUND", "Gift card code not found");
-  return code;
+  return {
+    ...code,
+    code: decryptGiftCardSecret(code.code)!,
+    pin: decryptGiftCardSecret(code.pin),
+  };
 };
 
 const allowedTransitions: Record<GiftCardCodeStatus, GiftCardCodeStatus[]> = {
@@ -290,7 +309,7 @@ const updateCode = async (actorId: string, id: string, input: UpdateInventoryCod
     throw giftCardError(409, "INVALID_GIFT_CARD_CODE_STATE", `Cannot change code from ${existing.status} to ${input.status}`);
   }
   if (input.code && input.code !== existing.code) {
-    const duplicate = await prismaC.giftCardCode.findUnique({ where: { code: input.code }, select: { id: true } });
+    const duplicate = await prismaC.giftCardCode.findFirst({ where: { OR: [{ codeHash: giftCardSecretHash(input.code) }, { code: input.code }] }, select: { id: true } });
     if (duplicate) throw giftCardError(409, "GIFT_CARD_CODE_ALREADY_EXISTS", "Gift card code already exists");
   }
   const expiryDate = input.expiryDate === null ? null : input.expiryDate ? new Date(input.expiryDate) : undefined;
@@ -304,8 +323,8 @@ const updateCode = async (actorId: string, id: string, input: UpdateInventoryCod
   const code = await prismaC.giftCardCode.update({
     where: { id },
     data: {
-      ...(input.code !== undefined && { code: input.code }),
-      ...(input.pin !== undefined && { pin: input.pin }),
+      ...(input.code !== undefined && { code: encryptGiftCardSecret(input.code)!, codeHash: giftCardSecretHash(input.code) }),
+      ...(input.pin !== undefined && { pin: encryptGiftCardSecret(input.pin) }),
       ...(input.serialNumber !== undefined && { serialNo: input.serialNumber }),
       ...(expiryDate !== undefined && { expiryDate }),
       ...(nextStatus !== undefined && { status: nextStatus, reservedAt: nextStatus === GiftCardCodeStatus.RESERVED ? new Date() : null }),
@@ -313,7 +332,7 @@ const updateCode = async (actorId: string, id: string, input: UpdateInventoryCod
     },
   });
   await audit(actorId, "GIFT_CARD_CODE_UPDATED", "GiftCardCode", id, { previousStatus: existing.status, status: code.status });
-  return { ...code, code: maskGiftCardCode(code.code), pin: code.pin ? "****" : null };
+  return { ...code, code: maskGiftCardCode(input.code ?? existing.code), pin: code.pin ? "****" : null };
 };
 
 const deleteCode = async (actorId: string, id: string) => {

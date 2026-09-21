@@ -90,13 +90,26 @@ const loggerOptions: pino.LoggerOptions = {
       "*.newPassword",
       "*.accessToken",
       "*.refreshToken",
+      "*.id_token",
+      "*.refresh_token",
+      "*.otp",
+      "req.body.otp",
+      "*.verificationToken",
+      "*.signature_key",
+      "req.body.signature_key",
+      "req.query.signature_key",
+      "*.AAMARPAY_SIGNATURE_KEY",
+      "*.code",
+      "*.pin",
+      "*.cards[*].code",
+      "*.cards[*].pin",
     ],
     censor: "[REDACTED]",
   },
 };
 
 export const logger =
-  ENV.NODE_ENV === "production"
+  ENV.LOG_TO_FILE
     ? pino(loggerOptions, new DailyRotatingLogStream())
     : pino(loggerOptions);
 

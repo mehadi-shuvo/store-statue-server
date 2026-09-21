@@ -9,5 +9,6 @@ const router = Router();
 router.use(authenticateUser, authenticatedUserRateLimiter);
 router.get("/", validateRequest({ query: giftCardOrderQuerySchema }), giftCardCommerceController.listOrders);
 router.get("/:orderId", validateRequest({ params: orderIdParamsSchema }), giftCardCommerceController.getOrder);
+router.get("/:orderId/delivery", validateRequest({ params: orderIdParamsSchema }), giftCardCommerceController.getDelivery);
 
 export const giftCardOrderRouter = router;

@@ -92,8 +92,11 @@ const updateProduct = async (id: string, payload: Payload, userId?: string) => {
   return serviceFor(current.type).update(current.id, normalized, userId);
 };
 
-const deleteProduct = async (id: string) => {
+const deleteProduct = async (id: string, userId?: string) => {
   const current = await findProductType(id);
+  if (current.type === "GAME_TOP_UP") {
+    return gameTopUpServices.deleteTopUp(current.id, userId);
+  }
   return serviceFor(current.type).remove(current.id);
 };
 
@@ -225,13 +228,13 @@ const getSingleProductWithRelated = async (id: string) => {
   };
 };
 
-const bulkUploadProducts = async (products: Payload[]) => {
+const bulkUploadProducts = async (products: Payload[], userId?: string) => {
   if (!Array.isArray(products) || products.length === 0) {
     throw new ApiAppError(400, "products must be a non-empty array");
   }
   const data = [];
   for (const product of products) {
-    data.push(await addProduct(product));
+    data.push(await addProduct(product, userId));
   }
   return {
     message: `${data.length} products created successfully`,

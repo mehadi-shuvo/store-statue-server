@@ -3,20 +3,37 @@ import { ENV } from "../../utils/env-config";
 import { prismaC } from "../../utils/prisma-client";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { sendEmail } from "../../utils/sendEmail";
+import { sendEmail, type EmailSender } from "../../utils/sendEmail";
 import { generateOtp } from "../../utils/generateOTP";
-import { OtpType, UserRole } from "../../generated/prisma/client";
+import { OtpType, Prisma, UserRole } from "../../generated/prisma/client";
 import { logger } from "../../utils/logger";
+import {
+  emailVerificationTemplate,
+  passwordResetTemplate,
+} from "../../utils/email-templates";
 import type {
   CreateCustomerPayload,
   DeleteCustomerProfilePayload,
   LoginPayload,
   ResetPasswordPayload,
   UpdateCustomerProfilePayload,
+  VerifyEmailPayload,
 } from "./user.validation";
 
 const DUMMY_PASSWORD_HASH =
   "$2b$12$h6TRZPS.vxvidI7C2qHZeuVMUVEk0jEGbV4i.LPDQzazE9a.5XFV.";
+const EMAIL_VERIFICATION_RESPONSE =
+  "If an eligible account exists, a verification email will be sent";
+const EMAIL_VERIFICATION_TTL_MINUTES = Math.max(
+  1,
+  ENV.EMAIL_VERIFICATION_OTP_TTL_MINUTES,
+);
+const EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS = Math.max(
+  1,
+  ENV.EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS,
+);
+
+export const userEmailSender: EmailSender = { send: sendEmail };
 
 const userProfileSelect = {
   id: true,
@@ -24,6 +41,7 @@ const userProfileSelect = {
   name: true,
   phone: true,
   role: true,
+  isEmailVerified: true,
   createdAt: true,
   updatedAt: true,
 } as const;
@@ -61,35 +79,60 @@ const createUser = async (payload: CreateCustomerPayload) => {
     throw new ApiAppError(409, "User with this email already exists");
   }
 
-  // 2. Hash password
+  // 2. Hash password and the one-time verification code.
   let hashedPassword: string;
+  const verificationOtp = generateOtp();
+  let hashedVerificationOtp: string;
   try {
-    hashedPassword = await bcrypt.hash(payload.password, ENV.BCRYPT_SALT);
+    [hashedPassword, hashedVerificationOtp] = await Promise.all([
+      bcrypt.hash(payload.password, ENV.BCRYPT_SALT),
+      bcrypt.hash(verificationOtp, ENV.BCRYPT_SALT),
+    ]);
   } catch (error) {
-    throw new ApiAppError(500, "Failed to hash password", error);
+    throw new ApiAppError(500, "Failed to secure account credentials", error);
   }
 
-  // 3. Create user
+  // 3. Atomically create the user and hashed verification credential.
   try {
-    const user = await prismaC.user.create({
-      data: {
-        email: payload.email,
-        name: payload.name,
-        phone: payload.phone,
-        password: hashedPassword,
-        role: UserRole.CUSTOMER,
-      },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        phone: true,
-        role: true,
-        createdAt: true,
-      },
+    const createdAccount = await prismaC.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          email: payload.email,
+          name: payload.name,
+          phone: payload.phone,
+          password: hashedPassword,
+          role: UserRole.CUSTOMER,
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          phone: true,
+          role: true,
+          isEmailVerified: true,
+          createdAt: true,
+        },
+      });
+      const credential = await tx.oTP.create({
+        data: {
+          code: hashedVerificationOtp,
+          type: OtpType.EMAIL_VERIFICATION,
+          expiresAt: new Date(
+            Date.now() + EMAIL_VERIFICATION_TTL_MINUTES * 60_000,
+          ),
+          userId: created.id,
+        },
+        select: { id: true },
+      });
+      return { user: created, verificationCredentialId: credential.id };
     });
 
-    return user;
+    const verificationEmailSent = await sendVerificationEmail(
+      createdAccount.user,
+      verificationOtp,
+      createdAccount.verificationCredentialId,
+    );
+    return { ...createdAccount.user, verificationEmailSent };
   } catch (error) {
     if (isPrismaKnownError(error, "P2002")) {
       throw new ApiAppError(409, "User with this email already exists");
@@ -144,8 +187,172 @@ const loginUser = async ({ email, password }: LoginPayload) => {
       name: user.name,
       phone: user.phone,
       role: user.role,
+      isEmailVerified: user.isEmailVerified,
     },
   };
+};
+
+const disableVerificationOtp = async (userId: string, credentialId: string) => {
+  await prismaC.oTP
+    .updateMany({
+      where: {
+        id: credentialId,
+        userId,
+        type: OtpType.EMAIL_VERIFICATION,
+        used: false,
+      },
+      data: { used: true },
+    })
+    .catch((error) => {
+      logger.error(
+        { userId, errorType: error instanceof Error ? error.name : "UnknownDatabaseError" },
+        "Failed to invalidate an undelivered email verification credential",
+      );
+    });
+};
+
+const sendVerificationEmail = async (
+  user: { id: string; email: string; name: string },
+  otp: string,
+  credentialId: string,
+) => {
+  const template = emailVerificationTemplate({
+    customerName: user.name,
+    otp,
+    expiresInMinutes: EMAIL_VERIFICATION_TTL_MINUTES,
+  });
+  try {
+    await userEmailSender.send({ to: user.email, ...template });
+    return true;
+  } catch (error) {
+    await disableVerificationOtp(user.id, credentialId);
+    logger.warn(
+      { userId: user.id, errorType: error instanceof Error ? error.name : "EmailProviderError" },
+      "Email verification message was not delivered",
+    );
+    return false;
+  }
+};
+
+const verifyEmail = async (payload: VerifyEmailPayload) => {
+  const user = await prismaC.user.findFirst({
+    where: { email: payload.email, isActive: true, isDeleted: false },
+    select: { id: true, isEmailVerified: true },
+  });
+  if (!user) {
+    throw new ApiAppError(
+      400,
+      "Invalid or expired verification code",
+      undefined,
+      "INVALID_OR_EXPIRED_VERIFICATION_CODE",
+    );
+  }
+  if (user.isEmailVerified) {
+    throw new ApiAppError(409, "Email is already verified", undefined, "EMAIL_ALREADY_VERIFIED");
+  }
+
+  const credential = await prismaC.oTP.findFirst({
+    where: { userId: user.id, type: OtpType.EMAIL_VERIFICATION, used: false },
+    orderBy: { createdAt: "desc" },
+  });
+  const valid =
+    credential &&
+    credential.expiresAt > new Date() &&
+    (await bcrypt.compare(payload.otp, credential.code));
+  if (!valid) {
+    throw new ApiAppError(
+      400,
+      "Invalid or expired verification code",
+      undefined,
+      "INVALID_OR_EXPIRED_VERIFICATION_CODE",
+    );
+  }
+
+  await prismaC.$transaction(async (tx) => {
+    await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "users" WHERE "id" = ${user.id} FOR UPDATE`);
+    const currentUser = await tx.user.findUnique({
+      where: { id: user.id },
+      select: { isEmailVerified: true },
+    });
+    if (currentUser?.isEmailVerified) {
+      throw new ApiAppError(409, "Email is already verified", undefined, "EMAIL_ALREADY_VERIFIED");
+    }
+    const consumed = await tx.oTP.updateMany({
+      where: { id: credential.id, used: false, expiresAt: { gt: new Date() } },
+      data: { used: true },
+    });
+    if (consumed.count !== 1) {
+      throw new ApiAppError(
+        400,
+        "Invalid or expired verification code",
+        undefined,
+        "INVALID_OR_EXPIRED_VERIFICATION_CODE",
+      );
+    }
+    await tx.user.update({
+      where: { id: user.id },
+      data: { isEmailVerified: true },
+    });
+    await tx.oTP.updateMany({
+      where: { userId: user.id, type: OtpType.EMAIL_VERIFICATION, used: false },
+      data: { used: true },
+    });
+  });
+
+  return { isEmailVerified: true };
+};
+
+const resendEmailVerification = async (email: string) => {
+  const response = {
+    message: EMAIL_VERIFICATION_RESPONSE,
+    cooldownSeconds: EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS,
+  };
+  const user = await prismaC.user.findFirst({
+    where: { email, isActive: true, isDeleted: false },
+    select: { id: true, email: true, name: true, isEmailVerified: true },
+  });
+  if (!user || user.isEmailVerified) return response;
+
+  const otp = generateOtp();
+  const hashedOtp = await bcrypt.hash(otp, ENV.BCRYPT_SALT);
+  const cooldownStartedAt = new Date(
+    Date.now() - EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS * 1000,
+  );
+  const credential = await prismaC.$transaction(async (tx) => {
+    await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "users" WHERE "id" = ${user.id} FOR UPDATE`);
+    const currentUser = await tx.user.findUnique({
+      where: { id: user.id },
+      select: { isEmailVerified: true },
+    });
+    if (!currentUser || currentUser.isEmailVerified) return null;
+    const latest = await tx.oTP.findFirst({
+      where: { userId: user.id, type: OtpType.EMAIL_VERIFICATION, used: false },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true, expiresAt: true },
+    });
+    if (latest && latest.expiresAt > new Date() && latest.createdAt > cooldownStartedAt) {
+      return null;
+    }
+    await tx.oTP.updateMany({
+      where: { userId: user.id, type: OtpType.EMAIL_VERIFICATION, used: false },
+      data: { used: true },
+    });
+    return tx.oTP.create({
+      data: {
+        code: hashedOtp,
+        type: OtpType.EMAIL_VERIFICATION,
+        expiresAt: new Date(
+          Date.now() + EMAIL_VERIFICATION_TTL_MINUTES * 60_000,
+        ),
+        userId: user.id,
+      },
+      select: { id: true },
+    });
+  });
+  if (!credential) return response;
+
+  await sendVerificationEmail(user, otp, credential.id);
+  return response;
 };
 
 const getCustomerProfile = async (userId: string) => {
@@ -236,11 +443,12 @@ const forgotPassword = async (email: string) => {
     },
   });
 
-  await sendEmail(
-    email,
-    "Password Reset OTP",
-    `Your password reset OTP is ${otp}. It will expire in 5 minutes.`,
-  );
+  const template = passwordResetTemplate({
+    customerName: user.name,
+    otp,
+    expiresInMinutes: 5,
+  });
+  await userEmailSender.send({ to: email, ...template });
 
   return genericResponse;
 };
@@ -326,6 +534,7 @@ const getUsers = async () => {
       name: true,
       phone: true,
       role: true,
+      isEmailVerified: true,
       createdAt: true,
     },
   });
@@ -338,6 +547,8 @@ export const userService = {
   updateCustomerProfile,
   deleteCustomerProfile,
   forgotPassword,
+  verifyEmail,
+  resendEmailVerification,
   verifyOtp,
   resetPassword,
   getUsers,

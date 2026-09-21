@@ -12,10 +12,26 @@ import { publicGiftCardQuerySchema } from "../gift-card.validation";
 import { authorizeRoles } from "../../../middlewares/auth.middleware";
 import { UserRole } from "../../../generated/prisma/client";
 import { ApiAppError } from "../../../utils/apiAppError";
+import { authenticateUser } from "../../../middlewares/auth.middleware";
+import { ENV } from "../../../utils/env-config";
+import { decryptGiftCardSecret, encryptGiftCardSecret, giftCardSecretHash } from "../gift-card-crypto";
 
 test("inventory codes are masked without exposing middle segments", () => {
   assert.equal(maskGiftCardCode("AMZN-1111-AAAA"), "AMZN-****-AAAA");
   assert.equal(maskGiftCardCode("ABCD1234EFGH"), "ABCD****EFGH");
+});
+
+test("gift-card secrets use authenticated encryption and deterministic keyed fingerprints", () => {
+  const previous = ENV.GIFT_CARD_ENCRYPTION_KEY;
+  ENV.GIFT_CARD_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
+  try {
+    const encrypted = encryptGiftCardSecret("SECRET-CODE")!;
+    assert.notEqual(encrypted, "SECRET-CODE");
+    assert.equal(decryptGiftCardSecret(encrypted), "SECRET-CODE");
+    assert.equal(giftCardSecretHash("SECRET-CODE"), giftCardSecretHash("SECRET-CODE"));
+  } finally {
+    ENV.GIFT_CARD_ENCRYPTION_KEY = previous;
+  }
 });
 
 test("money is serialized to two decimal places", () => {
@@ -78,4 +94,15 @@ test("customer role is denied by admin authorization middleware", () => {
   );
   assert.ok(nextError instanceof ApiAppError);
   assert.equal((nextError as ApiAppError).statusCode, 403);
+});
+
+test("unauthenticated checkout authentication is rejected", async () => {
+  let nextError: unknown;
+  await authenticateUser(
+    { headers: {}, cookies: {} } as never,
+    {} as never,
+    (error?: unknown) => { nextError = error; },
+  );
+  assert.ok(nextError instanceof ApiAppError);
+  assert.equal((nextError as ApiAppError).statusCode, 401);
 });

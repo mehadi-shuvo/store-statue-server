@@ -10,6 +10,7 @@ import {
   loginRateLimiter,
   otpVerifyRateLimiter,
   registerRateLimiter,
+  resendOtpRateLimiter,
 } from "../../middlewares/rate-limit.middleware";
 import { UserRole } from "../../generated/prisma/client";
 import { userController } from "./user.controller";
@@ -19,6 +20,12 @@ const router = Router();
 router.post("/register", registerRateLimiter, userController.createUser);
 router.post("/login", loginRateLimiter, userController.login);
 router.post("/logout", userController.logout);
+router.post("/verify-email", otpVerifyRateLimiter, userController.verifyEmail);
+router.post(
+  "/resend-verification",
+  resendOtpRateLimiter,
+  userController.resendEmailVerification,
+);
 router.post("/forgot-password", forgotPasswordRateLimiter, userController.forgotPassword);
 router.post("/reset-password", otpVerifyRateLimiter, userController.resetPassword);
 router.get(

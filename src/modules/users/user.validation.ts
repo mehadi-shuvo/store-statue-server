@@ -43,6 +43,15 @@ export const loginSchema = z
 
 export const forgotPasswordSchema = z.object({ email: emailSchema }).strict();
 
+export const verifyEmailSchema = z
+  .object({
+    email: emailSchema,
+    otp: z.string().trim().regex(/^\d{6}$/, "OTP must be a 6-digit code"),
+  })
+  .strict();
+
+export const resendEmailVerificationSchema = z.object({ email: emailSchema }).strict();
+
 export const resetPasswordSchema = z
   .object({
     email: emailSchema,
@@ -72,6 +81,7 @@ export type LoginPayload = z.infer<typeof loginSchema>;
 export type UpdateCustomerProfilePayload = z.infer<typeof updateCustomerProfileSchema>;
 export type DeleteCustomerProfilePayload = z.infer<typeof deleteCustomerProfileSchema>;
 export type ResetPasswordPayload = z.infer<typeof resetPasswordSchema>;
+export type VerifyEmailPayload = z.infer<typeof verifyEmailSchema>;
 
 export const parseRequestBody = <T>(schema: z.ZodSchema<T>, body: unknown): T => {
   const parsed = schema.safeParse(body);

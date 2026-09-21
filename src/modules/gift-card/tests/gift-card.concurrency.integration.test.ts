@@ -7,13 +7,14 @@ import { giftCardPurchaseService } from "../gift-card-purchase.service";
 
 const run = process.env.RUN_GIFT_CARD_INTEGRATION_TESTS === "true";
 
-test("two simultaneous purchases cannot receive the same inventory code", { skip: !run }, async () => {
+test("twenty simultaneous purchases cannot receive the same inventory code", { skip: !run }, async () => {
   const marker = randomUUID();
   const user = await prismaC.user.create({
     data: {
       email: `gift-card-concurrency-${marker}@example.test`,
       name: "Gift Card Concurrency Test",
       password: "not-a-real-login-password",
+      isEmailVerified: true,
     },
   });
   const product = await prismaC.giftCardProduct.create({
@@ -37,20 +38,20 @@ test("two simultaneous purchases cannot receive the same inventory code", { skip
   });
 
   try {
-    const results = await Promise.allSettled([
+    const results = await Promise.allSettled(Array.from({ length: 20 }, () =>
       giftCardPurchaseService.createPurchase(user.id, [{ denominationId: denomination.id, quantity: 1 }], { useAccountEmail: true }),
-      giftCardPurchaseService.createPurchase(user.id, [{ denominationId: denomination.id, quantity: 1 }], { useAccountEmail: true }),
-    ]);
+    ));
     assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
-    assert.equal(results.filter((result) => result.status === "rejected").length, 1);
-    const sold = await prismaC.giftCardCode.findUniqueOrThrow({ where: { id: inventory.id } });
-    assert.equal(sold.status, GiftCardCodeStatus.SOLD);
-    assert.ok(sold.orderItemId);
-    assert.equal(await prismaC.giftCardDelivery.count({ where: { inventoryCodeId: inventory.id } }), 1);
+    assert.equal(results.filter((result) => result.status === "rejected").length, 19);
+    const reserved = await prismaC.giftCardCode.findUniqueOrThrow({ where: { id: inventory.id } });
+    assert.equal(reserved.status, GiftCardCodeStatus.RESERVED);
+    assert.ok(reserved.orderItemId);
+    assert.equal(await prismaC.giftCardDelivery.count({ where: { inventoryCodeId: inventory.id } }), 0);
   } finally {
     const orders = await prismaC.order.findMany({ where: { userId: user.id }, select: { id: true } });
     const orderIds = orders.map((order) => order.id);
     await prismaC.giftCardDelivery.deleteMany({ where: { orderItem: { orderId: { in: orderIds } } } });
+    await prismaC.payment.deleteMany({ where: { orderId: { in: orderIds } } });
     await prismaC.giftCardCode.deleteMany({ where: { denominationId: denomination.id } });
     await prismaC.orderItem.deleteMany({ where: { orderId: { in: orderIds } } });
     await prismaC.order.deleteMany({ where: { id: { in: orderIds } } });

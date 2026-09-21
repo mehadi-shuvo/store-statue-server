@@ -4,9 +4,9 @@ import {
   DigitalProductType,
   OrderStatus,
   PaymentStatus,
+  Prisma,
   ProductStatus,
   UserRole,
-  type Prisma,
 } from "../../generated/prisma/client";
 import { ApiAppError } from "../../utils/apiAppError";
 import { ENV } from "../../utils/env-config";
@@ -29,6 +29,7 @@ import type {
   VerifyPaymentIssuePayload,
   VerifyAdminActionPayload,
 } from "./admin.validation";
+import { assertPaymentTransition } from "../payment/services/payment-state-machine";
 
 const adminProfileSelect = {
   id: true,
@@ -427,6 +428,7 @@ const orderInclude = {
 
 const getOrders = async (query: OrderQuery) => {
   const where: Prisma.OrderWhereInput = {
+    items: { none: { productType: DigitalProductType.GAME_TOP_UP } },
     ...(query.status ? { status: query.status } : {}),
     ...(query.paymentStatus ? { paymentStatus: query.paymentStatus } : {}),
     ...(query.userId ? { userId: query.userId } : {}),
@@ -449,6 +451,12 @@ const getOrders = async (query: OrderQuery) => {
 };
 
 const getOrderById = async (orderId: string) => {
+  const topUpItem = await prismaC.orderItem.count({
+    where: { orderId, productType: DigitalProductType.GAME_TOP_UP },
+  });
+  if (topUpItem) {
+    throw new ApiAppError(409, "Use the game top-up detail endpoint for this order");
+  }
   const order = await prismaC.order.findUnique({
     where: { id: orderId },
     include: orderInclude,
@@ -473,6 +481,13 @@ const updateOrderStatus = async (
 
   if (!existingOrder) {
     throw new ApiAppError(404, "Order not found");
+  }
+
+  const hasTopUp = await prismaC.orderItem.count({
+    where: { orderId, productType: DigitalProductType.GAME_TOP_UP },
+  });
+  if (hasTopUp) {
+    throw new ApiAppError(409, "Use the game top-up workflow endpoints to change this order");
   }
 
   const order = await prismaC.order.update({
@@ -502,6 +517,7 @@ const updateOrderStatus = async (
 const getDeliveryItems = async (query: DeliveryQuery) => {
   return prismaC.orderItem.findMany({
     where: {
+      productType: { not: DigitalProductType.GAME_TOP_UP },
       ...(query.deliveryStatus ? { deliveryStatus: query.deliveryStatus } : {}),
     },
     orderBy: { createdAt: "desc" },
@@ -537,6 +553,13 @@ const updateDeliveryStatus = async (
 
   if (!existingItem) {
     throw new ApiAppError(404, "Order item not found");
+  }
+
+  const topUpItem = await prismaC.orderItem.count({
+    where: { id: orderItemId, productType: DigitalProductType.GAME_TOP_UP },
+  });
+  if (topUpItem) {
+    throw new ApiAppError(409, "Use the game top-up workflow endpoints to change this item");
   }
 
   const item = await prismaC.orderItem.update({
@@ -583,6 +606,7 @@ const getPayments = async (query: PaymentQuery) => {
     },
     orderBy: { createdAt: "desc" },
     include: {
+      attempts: { orderBy: { createdAt: "desc" } },
       order: {
         select: {
           id: true,
@@ -601,6 +625,7 @@ const getPaymentById = async (paymentId: string) => {
   const payment = await prismaC.payment.findUnique({
     where: { id: paymentId },
     include: {
+      attempts: { orderBy: { createdAt: "desc" } },
       order: {
         include: {
           user: { select: { id: true, email: true, name: true, phone: true } },
@@ -614,7 +639,17 @@ const getPaymentById = async (paymentId: string) => {
     throw new ApiAppError(404, "Payment not found");
   }
 
-  return payment;
+  return {
+    ...payment,
+    order: {
+      ...payment.order,
+      items: payment.order.items.map((item) =>
+        item.productType === DigitalProductType.GAME_TOP_UP
+          ? { ...item, customerInputs: undefined }
+          : item,
+      ),
+    },
+  };
 };
 
 const verifyPaymentIssue = async (
@@ -631,27 +666,16 @@ const verifyPaymentIssue = async (
     throw new ApiAppError(404, "Payment not found");
   }
 
-  const paidAt =
-    payload.paymentStatus === PaymentStatus.PAID ? new Date() : null;
-
   const updatedPayment = await prismaC.$transaction(async (tx) => {
+    await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "payments" WHERE "id" = ${paymentId} FOR UPDATE`);
+    const current = await tx.payment.findUniqueOrThrow({ where: { id: paymentId } });
+    assertPaymentTransition(current.paymentStatus, payload.paymentStatus);
     const updated = await tx.payment.update({
       where: { id: paymentId },
       data: {
         paymentStatus: payload.paymentStatus,
-        ...(payload.transactionId !== undefined
-          ? { transactionId: payload.transactionId }
-          : {}),
-        ...(payload.providerPaymentId !== undefined
-          ? { providerPaymentId: payload.providerPaymentId }
-          : {}),
-        ...(payload.failureReason !== undefined
-          ? { failureReason: payload.failureReason }
-          : {}),
-        ...(payload.rawResponse !== undefined
-          ? { rawResponse: payload.rawResponse as Prisma.InputJsonValue }
-          : {}),
-        paidAt,
+        failureReason: payload.failureReason,
+        reconciliationReason: payload.failureReason,
       },
       include: {
         order: {
@@ -670,11 +694,15 @@ const verifyPaymentIssue = async (
       where: { id: payment.orderId },
       data: {
         paymentStatus: payload.paymentStatus,
-        ...(payload.paymentStatus === PaymentStatus.PAID
-          ? { status: OrderStatus.CONFIRMED }
-          : {}),
+        status: payload.paymentStatus === PaymentStatus.REFUNDED
+          ? OrderStatus.CANCELLED
+          : OrderStatus.REFUND_PENDING,
       },
     });
+
+    await tx.paymentAttempt.updateMany({ where: { paymentRecordId: paymentId }, data: {
+      status: payload.paymentStatus, failureReason: payload.failureReason,
+    } });
 
     return updated;
   });
@@ -687,8 +715,6 @@ const verifyPaymentIssue = async (
     metadata: {
       previousStatus: payment.paymentStatus,
       newStatus: payload.paymentStatus,
-      transactionId: payload.transactionId,
-      providerPaymentId: payload.providerPaymentId,
       failureReason: payload.failureReason,
     },
   });

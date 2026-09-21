@@ -39,30 +39,33 @@ export const applyHttpSecurity = (app: Express) => {
     }),
   );
 
-  app.use(
-    cors({
-      origin: (origin, callback) => {
-        if (!origin) {
-          return callback(null, true);
-        }
+  const frontendCors = cors({
+    origin: (origin, callback) => {
+      if (!origin) {
+        return callback(null, true);
+      }
 
-        const normalizedOrigin = normalizeOrigin(origin);
+      const normalizedOrigin = normalizeOrigin(origin);
 
-        if (
-          allowedOrigins.includes(normalizedOrigin) ||
-          (ENV.NODE_ENV !== "production" && isLocalDevOrigin(normalizedOrigin))
-        ) {
-          return callback(null, true);
-        }
+      if (
+        allowedOrigins.includes(normalizedOrigin) ||
+        (ENV.NODE_ENV !== "production" && isLocalDevOrigin(normalizedOrigin))
+      ) {
+        return callback(null, true);
+      }
 
-        return callback(new ApiAppError(403, "Origin is not allowed by CORS"));
-      },
-      credentials: true,
-      methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
-      allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
-      maxAge: 600,
-    }),
-  );
+      return callback(new ApiAppError(403, "Origin is not allowed by CORS"));
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Idempotency-Key"],
+    maxAge: 600,
+  });
+  app.use((req, res, next) => {
+    // Cross-site gateway form navigation is not a frontend CORS request.
+    if (["POST", "GET"].includes(req.method) && /^\/api(?:\/v1)?\/payments\/aamarpay\/(success|fail|cancel)\/?$/.test(req.path)) return next();
+    return frontendCors(req, res, next);
+  });
 
   app.use(compression());
 };
