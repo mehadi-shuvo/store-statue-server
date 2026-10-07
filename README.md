@@ -4,6 +4,14 @@ Production-oriented REST API for a digital commerce platform selling gift cards,
 
 The application keeps pricing, payment verification, inventory allocation, fulfillment, and authorization under server control. Browser redirects and client-supplied payment fields are never treated as proof of payment.
 
+<div align="center">
+
+[![Live Demo](https://img.shields.io/badge/🌐_Live-Demo-brightgreen?style=for-the-badge)](https://game-express-phi.vercel.app/)
+[![API Docs](https://img.shields.io/badge/📚_API-Docs-blue?style=for-the-badge)](https://gamexpress-server.onrender.com/api-docs/)
+[![Frontend Code](https://img.shields.io/badge/💻Frontend-Repository-black?style=for-the-badge&logo=github)](https://github.com/mehadi-shuvo/store-statue-client)
+
+</div>
+
 ## Contents
 
 - [Architecture](#architecture)
