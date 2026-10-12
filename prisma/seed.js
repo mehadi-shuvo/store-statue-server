@@ -11,92 +11,90 @@ const requiredEnv = (name) => {
   return value;
 };
 
+const adminSelect = {
+  id: true,
+  email: true,
+  role: true,
+  isActive: true,
+  isDeleted: true,
+};
+
+const syncSuperAdmin = async (
+  prisma,
+  {
+    email,
+    password,
+    name,
+    phone,
+    saltRounds = 12,
+  },
+) => {
+  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedPhone = phone?.trim() || undefined;
+  const hashedPassword = await bcrypt.hash(password, Number(saltRounds || 12));
+
+  const existingUser = await prisma.user.findUnique({
+    where: { email: normalizedEmail },
+    select: { id: true },
+  });
+
+  if (existingUser) {
+    return prisma.user.update({
+      where: { email: normalizedEmail },
+      data: {
+        email: normalizedEmail,
+        name,
+        phone: normalizedPhone,
+        password: hashedPassword,
+        role: UserRole.SUPER_ADMIN,
+        isActive: true,
+        isDeleted: false,
+      },
+      select: adminSelect,
+    });
+  }
+
+  return prisma.user.create({
+    data: {
+      email: normalizedEmail,
+      name,
+      phone: normalizedPhone,
+      password: hashedPassword,
+      role: UserRole.SUPER_ADMIN,
+      isActive: true,
+      isDeleted: false,
+    },
+    select: adminSelect,
+  });
+};
+
 const main = async () => {
   const connectionString = requiredEnv("DATABASE_URL");
-  const email = requiredEnv("SUPER_ADMIN_EMAIL").toLowerCase();
-  const password = requiredEnv("SUPER_ADMIN_PASSWORD");
-  const name = requiredEnv("SUPER_ADMIN_NAME");
-  const phone = process.env.SUPER_ADMIN_PHONE?.trim() || undefined;
-
   const adapter = new PrismaPg({ connectionString });
   const prisma = new PrismaClient({ adapter });
 
   try {
-    const existingSuperAdmin = await prisma.user.findFirst({
-      where: {
-        email,
-        role: UserRole.SUPER_ADMIN,
-      },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-      },
+    const admin = await syncSuperAdmin(prisma, {
+      email: requiredEnv("SUPER_ADMIN_EMAIL"),
+      password: requiredEnv("SUPER_ADMIN_PASSWORD"),
+      name: requiredEnv("SUPER_ADMIN_NAME"),
+      phone: process.env.SUPER_ADMIN_PHONE,
+      saltRounds: process.env.SALT_ROUNDS || process.env.BCRYPT_SALT || 12,
     });
-
-    if (existingSuperAdmin) {
-      console.log(
-        `Super admin already exists: ${existingSuperAdmin.email} (${existingSuperAdmin.id})`,
-      );
-      return;
-    }
-
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
-      select: {
-        id: true,
-        role: true,
-        isDeleted: true,
-      },
-    });
-
-    const hashedPassword = await bcrypt.hash(
-      password,
-      Number(process.env.SALT_ROUNDS || 12),
-    );
-
-    const admin = existingUser
-      ? await prisma.user.update({
-          where: { email },
-          data: {
-            name,
-            phone,
-            password: hashedPassword,
-            role: UserRole.SUPER_ADMIN,
-            isDeleted: false,
-          },
-          select: {
-            id: true,
-            email: true,
-            role: true,
-            isDeleted: true,
-          },
-        })
-      : await prisma.user.create({
-          data: {
-            email,
-            name,
-            phone,
-            password: hashedPassword,
-            role: UserRole.SUPER_ADMIN,
-          },
-          select: {
-            id: true,
-            email: true,
-            role: true,
-            isDeleted: true,
-          },
-        });
 
     console.log(
-      `Created super admin: ${admin.email} (${admin.id}) [${admin.role}]`,
+      `Synchronized super admin: ${admin.email} (${admin.id}) [${admin.role}]`,
     );
   } finally {
     await prisma.$disconnect();
   }
 };
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  });
+}
+
+module.exports = { syncSuperAdmin };
